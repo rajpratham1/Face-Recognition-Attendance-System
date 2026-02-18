@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center mt-5">
+    <div class="col-md-5">
+        <div class="glass-card">
+            <h2 class="text-center mb-4">Teacher Registration</h2>
+            <form method="POST">
+                <div class="mb-3">
+                    <label class="form-label">Full Name</label>
+                    <input type="text" name="name" class="form-control" required placeholder="Dr. XYZ">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Department</label>
+                    <select name="department" class="form-select" required>
+                        <option value="">Select Department</option>
+                        <option value="Computer Science">Computer Science</option>
+                        <option value="Management">Management</option>
+                        <option value="Engineering">Engineering</option>
+                        <option value="Pharmacy">Pharmacy</option>
+                        <option value="Law">Law</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Work Email</label>
+                    <input type="email" name="email" class="form-control" required placeholder="name@invertis.org">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Password</label>
+                    <input type="password" name="password" class="form-control" required minlength="6">
+                </div>
+                <button type="submit" class="btn btn-custom w-100 py-3">Register & Continue to Face Scan</button>
+            </form>
+            <p class="text-center mt-3 small">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
+        </div>
+    </div>
+</div>
+{% endblock %}

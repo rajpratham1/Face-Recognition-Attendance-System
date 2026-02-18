@@ -1,7 +1,0 @@
-instance/
-__pycache__/
-*.pyc
-*.db
-.env
-verify_face.jpg
-temp_face.jpg

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="glass-card text-center h-100">
+            <div class="avatar-pill mb-3">{{ current_user.name[0] }}</div>
+            <h4 class="mb-1">{{ current_user.name }}</h4>
+            <p class="text-muted mb-3">Student Panel • {{ current_user.department }}</p>
+            <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom w-100 mb-2">Open Session Attendance</a>
+            <div class="panel-metric mt-2"><span>Live Sessions</span><strong>{{ active_sessions|length }}</strong></div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="glass-card mb-4">
+            <h4 class="mb-3">My Enrolled Courses</h4>
+            {% if enrolled_courses %}
+            <div class="session-grid">
+                {% for course in enrolled_courses %}
+                <div class="session-card student-live">
+                    <h6 class="mb-1">{{ course.code }} • {{ course.title }}</h6>
+                    <p class="small text-muted mb-0">Section: {{ course.section }}</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No course enrollment found. Contact your teacher.</p>
+            {% endif %}
+        </div>
+
+        <div class="glass-card mb-4">
+            <h4 class="mb-3">Live Classes Available</h4>
+            {% if active_sessions %}
+            <div class="session-grid">
+                {% for session in active_sessions %}
+                <div class="session-card student-live">
+                    <h6 class="mb-1">{{ session.course_code }} • {{ session.title }}</h6>
+                    <p class="small text-muted mb-1">Room: {{ session.room }}</p>
+                    <p class="small mb-0">Ends at {{ session.ends_at|localdtfmt('%I:%M %p') }} ({{ app_timezone }})</p>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No live session right now. Wait for your teacher to start one.</p>
+            {% endif %}
+        </div>
+
+        <div class="glass-card mb-4">
+            <h4 class="mb-3">My Session Attendance</h4>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Course</th>
+                            <th>Session</th>
+                            <th>Marked At</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if session_records %}
+                        {% for record in session_records %}
+                        <tr>
+                            <td>{{ record.session.course_code }}</td>
+                            <td>{{ record.session.title }}</td>
+                            <td>{{ record.marked_at|localdtfmt('%d %b %Y %I:%M %p') }}</td>
+                            <td><span class="badge bg-success">Present</span></td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr><td colspan="4" class="text-center text-muted py-3">No session attendance records yet.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="glass-card">
+            <h4 class="mb-3">My Daily Attendance Records</h4>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Time</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if attendance %}
+                        {% for record in attendance %}
+                        <tr>
+                            <td>{{ record.date.strftime('%d %b %Y') }}</td>
+                            <td>{{ record.time.strftime('%I:%M %p') }}</td>
+                            <td><span class="badge bg-success">Present</span></td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr><td colspan="3" class="text-center py-4 text-muted">No daily records found yet.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

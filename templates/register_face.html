@@ -26,6 +26,7 @@
     const video = document.getElementById('video-preview');
     const captureBtn = document.getElementById('capture-btn');
     const statusText = document.getElementById('status-text');
+    const csrfToken = window.getCsrfToken();
 
     async function loadModels() {
         statusText.innerText = "Loading AI Models...";
@@ -66,7 +67,7 @@
         try {
             const response = await fetch('/save_face', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({ descriptor: descriptor })
             });
 

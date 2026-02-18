@@ -1,8 +1,13 @@
 Flask==3.0.0
 Flask-SQLAlchemy==3.1.1
 Flask-Login==0.6.3
+Flask-WTF==1.2.1
+Flask-Limiter==3.10.1
+Flask-Migrate==4.0.7
+firebase-admin==6.7.0
 Werkzeug==3.0.1
 numpy
 gunicorn==21.2.0
 python-dotenv==1.0.0
 geopy==2.4.1
+pytest==8.3.5

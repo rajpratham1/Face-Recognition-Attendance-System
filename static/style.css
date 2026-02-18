@@ -1,66 +1,121 @@
 :root {
-    --primary: #4f46e5;
-    --primary-hover: #4338ca;
-    --secondary: #10b981;
-    --dark: #1e293b;
-    --light: #f8fafc;
-    --glass: rgba(255, 255, 255, 0.7);
-    --glass-border: rgba(255, 255, 255, 0.2);
-    --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --primary: #0b6e4f;
+    --primary-hover: #08553d;
+    --accent: #f4a259;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --surface: rgba(255, 255, 255, 0.82);
+    --surface-border: rgba(255, 255, 255, 0.6);
+    --shadow: 0 12px 28px rgba(17, 24, 39, 0.12);
 }
 
 body {
     font-family: 'Outfit', sans-serif;
-    background: linear-gradient(135deg, #eef2ff 0%, #f0fdf4 100%);
+    color: var(--ink);
+    background:
+        radial-gradient(circle at 8% 14%, rgba(244, 162, 89, 0.3), transparent 30%),
+        radial-gradient(circle at 95% 88%, rgba(11, 110, 79, 0.25), transparent 35%),
+        linear-gradient(160deg, #f9fafb 0%, #ecfeff 45%, #fff7ed 100%);
     min-height: 100vh;
-    margin: 0;
-    color: var(--dark);
-}
-
-.glass-card {
-    background: var(--glass);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--glass-border);
-    border-radius: 20px;
-    box-shadow: var(--shadow);
-    padding: 2rem;
-}
-
-.btn-custom {
-    background: var(--primary);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    padding: 0.8rem 1.5rem;
-    font-weight: 600;
-    transition: all 0.3s ease;
-}
-
-.btn-custom:hover {
-    background: var(--primary-hover);
-    transform: translateY(-2px);
-    box-shadow: 0 10px 15px -3px rgba(79, 70, 229, 0.3);
-    color: white;
 }
 
 .navbar {
-    background: var(--glass);
+    background: rgba(255, 255, 255, 0.86);
     backdrop-filter: blur(10px);
-    border-bottom: 1px solid var(--glass-border);
+    border-bottom: 1px solid var(--surface-border);
 }
 
 .navbar-brand {
     font-weight: 800;
+    letter-spacing: 0.04em;
     color: var(--primary) !important;
-    font-size: 1.5rem;
+}
+
+.brand-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+}
+
+.brand-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    box-shadow: 0 8px 18px rgba(11, 110, 79, 0.28);
+}
+
+.brand-text {
+    font-size: 1.1rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.glass-card {
+    background: var(--surface);
+    border: 1px solid var(--surface-border);
+    border-radius: 18px;
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(10px);
+    padding: 1.8rem;
+}
+
+.hero-shell {
+    position: relative;
+    overflow: hidden;
+}
+
+.eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 0.8rem;
+}
+
+.panel-stack {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.panel-card {
+    border-radius: 14px;
+    padding: 1rem;
+    color: #fff;
+    box-shadow: var(--shadow);
+}
+
+.panel-student {
+    background: linear-gradient(135deg, #0ea5e9, #2563eb);
+}
+
+.panel-teacher {
+    background: linear-gradient(135deg, #f97316, #ea580c);
+}
+
+.panel-admin {
+    background: linear-gradient(135deg, #0b6e4f, #059669);
+}
+
+.btn-custom {
+    background: var(--primary);
+    color: #fff;
+    border: 0;
+    border-radius: 12px;
+    font-weight: 600;
+    transition: all 0.2s ease;
+}
+
+.btn-custom:hover {
+    background: var(--primary-hover);
+    transform: translateY(-1px);
+    color: #fff;
 }
 
 #video-preview {
     width: 100%;
-    max-width: 400px;
-    border-radius: 20px;
-    border: 4px solid white;
+    max-width: 420px;
+    border-radius: 16px;
+    border: 3px solid #fff;
     box-shadow: var(--shadow);
     transform: scaleX(-1);
 }
@@ -69,7 +124,6 @@ body {
     position: relative;
     display: inline-block;
     width: 100%;
-    text-align: center;
 }
 
 .scan-overlay {
@@ -77,34 +131,110 @@ body {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 250px;
-    height: 250px;
-    border: 3px solid rgba(255, 255, 255, 0.5);
+    width: 230px;
+    height: 230px;
+    border: 3px dashed rgba(255, 255, 255, 0.85);
     border-radius: 50%;
     pointer-events: none;
 }
 
-/* Animations */
+.challenge-box {
+    border: 1px dashed rgba(11, 110, 79, 0.4);
+    background: rgba(11, 110, 79, 0.08);
+    color: var(--primary-hover);
+    border-radius: 12px;
+    padding: 0.65rem;
+    font-size: 0.9rem;
+}
+
+.mini-check {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 0.45rem 0.6rem;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.panel-metric {
+    display: flex;
+    justify-content: space-between;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 0.65rem 0.8rem;
+    margin-bottom: 0.5rem;
+}
+
+.session-grid {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.session-card {
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 0.9rem;
+}
+
+.student-live {
+    border-left: 4px solid #0ea5e9;
+}
+
+.manual-quick {
+    background: rgba(255, 255, 255, 0.86);
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 0.95rem;
+}
+
+.manual-accordion .accordion-item {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 0.6rem;
+}
+
+.manual-accordion .accordion-button {
+    font-weight: 600;
+}
+
+.manual-accordion .accordion-button:not(.collapsed) {
+    background: rgba(11, 110, 79, 0.08);
+    color: var(--primary-hover);
+}
+
+.avatar-pill {
+    width: 76px;
+    height: 76px;
+    margin: 0 auto;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0ea5e9, #2563eb);
+    color: #fff;
+    font-size: 2rem;
+    font-weight: 700;
+}
+
 @keyframes pulse {
-    0% {
-        opacity: 0.5;
-    }
-
-    50% {
-        opacity: 1;
-    }
-
-    100% {
-        opacity: 0.5;
-    }
+    0% { opacity: 0.55; }
+    50% { opacity: 1; }
+    100% { opacity: 0.55; }
 }
 
 .pulse {
-    animation: pulse 2s infinite;
+    animation: pulse 1.8s infinite;
 }
 
 @media (max-width: 768px) {
     .glass-card {
-        padding: 1.5rem;
+        padding: 1.2rem;
+    }
+
+    .scan-overlay {
+        width: 180px;
+        height: 180px;
     }
 }

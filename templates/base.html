@@ -4,26 +4,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invertis Attendance System</title>
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Face Attendance System</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <script>
+        window.getCsrfToken = function () {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            return meta ? meta.getAttribute('content') : '';
+        };
+    </script>
 </head>
 
 <body>
     <nav class="navbar navbar-expand-lg sticky-top mb-4">
         <div class="container">
-            <a class="navbar-brand" href="/">INVERTIS</a>
+            <a class="navbar-brand brand-wrap" href="/">
+                <img src="{{ url_for('static', filename='logo.svg') }}" alt="Face Attendance Logo" class="brand-logo">
+                <span class="brand-text">Face Attendance</span>
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}#user-manual">User Manual</a></li>
                     {% if current_user.is_authenticated %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('mark_attendance') }}">Mark Attendance</a>
                     </li>
+                    {% if current_user.role == 'student' %}
+                    <li class="nav-item"><span class="nav-link disabled">Student Panel</span></li>
+                    {% elif current_user.role == 'teacher' %}
+                    <li class="nav-item"><span class="nav-link disabled">Teacher Panel</span></li>
+                    {% elif current_user.role == 'admin' %}
+                    <li class="nav-item"><span class="nav-link disabled">Admin Panel</span></li>
+                    {% endif %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('logout') }}">Logout</a></li>
                     {% else %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">Login</a></li>

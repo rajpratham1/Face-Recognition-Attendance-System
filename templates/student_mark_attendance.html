@@ -2,33 +2,41 @@
 
 {% block content %}
 <div class="row justify-content-center g-4">
-    <div class="col-lg-7 text-center">
+    <div class="col-lg-8">
         <div class="glass-card">
-            <h2 class="mb-2">Attendance Verification Panel</h2>
-            <p class="text-muted">Live camera + geofence validation. Only one face is allowed in frame.</p>
+            <h2 class="mb-2">Student Session Attendance</h2>
+            <p class="text-muted">Choose active class, then verify face + location to mark attendance.</p>
 
             <div class="row g-2 mb-3 text-start">
-                <div class="col-md-4"><div class="mini-check">Face match check</div></div>
-                <div class="col-md-4"><div class="mini-check">Single-face only</div></div>
-                <div class="col-md-4"><div class="mini-check">Campus location check</div></div>
+                <div class="col-md-4"><div class="mini-check">Live session required</div></div>
+                <div class="col-md-4"><div class="mini-check">Single-face verification</div></div>
+                <div class="col-md-4"><div class="mini-check">Campus geofence required</div></div>
             </div>
 
-            <div id="location-status" class="alert alert-info py-2 small mb-3">
-                <i class="fas fa-map-marker-alt"></i> Getting geolocation...
+            <div class="mb-3">
+                <label for="session-id" class="form-label">Active Session</label>
+                <select id="session-id" class="form-select" {% if not active_sessions %}disabled{% endif %}>
+                    {% if active_sessions %}
+                    {% for session in active_sessions %}
+                    <option value="{{ session.id }}">{{ session.course_code }} - {{ session.title }} ({{ session.room }}) ends {{ session.ends_at|localdtfmt('%I:%M %p') }}</option>
+                    {% endfor %}
+                    {% else %}
+                    <option value="">No active sessions right now</option>
+                    {% endif %}
+                </select>
             </div>
 
-            <div class="challenge-box mb-3" id="challenge-box">Liveness prompt: keep face centered for verification.</div>
+            <div id="location-status" class="alert alert-info py-2 small mb-3">Getting geolocation...</div>
+            <div id="challenge-box" class="challenge-box mb-3">Liveness prompt: hold your face in the center circle.</div>
 
-            <div class="camera-container mb-4">
+            <div class="camera-container mb-4 text-center">
                 <video id="video-preview" autoplay muted playsinline></video>
                 <div class="scan-overlay"></div>
                 <div id="status-text" class="mt-2 fw-bold text-primary pulse">Camera Ready</div>
             </div>
 
-            <button id="mark-btn" class="btn btn-custom btn-lg w-100 mb-2" disabled>
-                Verify and Mark Attendance
-            </button>
-            <p class="small text-muted mb-0">Tip: Ensure only your face is visible and camera permission is enabled.</p>
+            <button id="mark-btn" class="btn btn-custom btn-lg w-100" disabled>Verify and Mark Session Attendance</button>
+            <button id="refresh-btn" class="btn btn-outline-secondary btn-sm mt-2">Refresh Active Sessions</button>
         </div>
     </div>
 </div>
@@ -39,7 +47,8 @@
     const markBtn = document.getElementById('mark-btn');
     const statusText = document.getElementById('status-text');
     const locStatus = document.getElementById('location-status');
-    const challengeBox = document.getElementById('challenge-box');
+    const sessionSelect = document.getElementById('session-id');
+    const refreshBtn = document.getElementById('refresh-btn');
     const csrfToken = window.getCsrfToken();
 
     let userCoords = { lat: null, lng: null };
@@ -54,13 +63,6 @@
         return id;
     })();
 
-    const challenges = [
-        'Look straight and keep your face centered.',
-        'Move slightly closer to camera for clarity.',
-        'Hold still for 2 seconds before verification.'
-    ];
-    challengeBox.textContent = `Liveness prompt: ${challenges[Math.floor(Math.random() * challenges.length)]}`;
-
     async function loadModels() {
         statusText.innerText = 'Loading AI Models...';
         const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
@@ -73,9 +75,31 @@
     }
 
     function checkReady() {
-        if (modelsLoaded && userCoords.lat !== null) {
-            markBtn.disabled = false;
+        const hasSession = !!sessionSelect.value;
+        markBtn.disabled = !(modelsLoaded && userCoords.lat !== null && hasSession);
+    }
+
+    async function refreshSessions() {
+        const res = await fetch('/api/active_sessions');
+        const data = await res.json();
+        sessionSelect.innerHTML = '';
+
+        if (data.sessions && data.sessions.length) {
+            data.sessions.forEach((s) => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.textContent = `${s.course_code} - ${s.title} (${s.room}) ends ${s.ends_at}`;
+                sessionSelect.appendChild(opt);
+            });
+            sessionSelect.disabled = false;
+        } else {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'No active sessions right now';
+            sessionSelect.appendChild(opt);
+            sessionSelect.disabled = true;
         }
+        checkReady();
     }
 
     if (navigator.geolocation) {
@@ -84,12 +108,12 @@
                 userCoords.lat = position.coords.latitude;
                 userCoords.lng = position.coords.longitude;
                 locStatus.className = 'alert alert-success py-2 small mb-3';
-                locStatus.innerHTML = '<i class="fas fa-check-circle"></i> Location Verified';
+                locStatus.textContent = 'Location verified.';
                 checkReady();
             },
             () => {
                 locStatus.className = 'alert alert-danger py-2 small mb-3';
-                locStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Location Access Required';
+                locStatus.textContent = 'Location access required.';
             },
             { enableHighAccuracy: true, timeout: 10000 }
         );
@@ -104,6 +128,9 @@
             statusText.innerText = 'Camera access denied.';
             statusText.className = 'mt-2 fw-bold text-danger';
         });
+
+    sessionSelect.addEventListener('change', checkReady);
+    refreshBtn.addEventListener('click', refreshSessions);
 
     markBtn.addEventListener('click', async () => {
         statusText.innerText = 'Running verification...';
@@ -131,10 +158,11 @@
         const descriptor = Array.from(allFaces[0].descriptor);
 
         try {
-            const response = await fetch('/mark_attendance', {
+            const response = await fetch('/api/session_attendance/mark', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrfToken },
                 body: JSON.stringify({
+                    session_id: Number(sessionSelect.value),
                     descriptor: descriptor,
                     lat: userCoords.lat,
                     lng: userCoords.lng,
@@ -143,21 +171,21 @@
             });
 
             const result = await response.json();
-
             if (result.success) {
                 statusText.innerText = result.message;
                 statusText.className = 'mt-2 fw-bold text-success';
-                setTimeout(() => window.location.href = '/dashboard', 1800);
+                setTimeout(() => window.location.href = '/dashboard', 1500);
             } else {
-                statusText.innerText = result.message;
+                statusText.innerText = result.message || 'Verification failed.';
                 statusText.className = 'mt-2 fw-bold text-danger';
-                markBtn.disabled = false;
+                checkReady();
             }
-        } catch (error) {
+        } catch (_) {
             statusText.innerText = 'Connection error. Try again.';
             statusText.className = 'mt-2 fw-bold text-danger';
-            markBtn.disabled = false;
+            checkReady();
         }
     });
 </script>
 {% endblock %}
+

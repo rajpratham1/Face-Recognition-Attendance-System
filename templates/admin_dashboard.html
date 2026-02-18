@@ -20,8 +20,9 @@
         <table class="table table-bordered table-hover align-middle">
             <thead class="bg-light">
                 <tr>
-                    <th rowspan="2">Teacher Name</th>
+                    <th rowspan="2">Name</th>
                     <th rowspan="2">Department</th>
+                    <th rowspan="2">Role</th>
                     <th colspan="7" class="text-center bg-primary text-white">Recent Attendance (Last 7 Days)</th>
                 </tr>
                 <tr>
@@ -36,6 +37,7 @@
                 <tr>
                     <td class="fw-bold">{{ user.name }}</td>
                     <td><span class="badge bg-info text-dark">{{ user.department }}</span></td>
+                    <td><span class="badge bg-dark text-uppercase">{{ user.role }}</span></td>
                     {% for date in recent_dates %}
                     <td class="text-center">
                         {% if user_attendance_map[user.id][date.isoformat()] %}
@@ -57,7 +59,7 @@
 <div class="mt-4 row">
     <div class="col-md-4 mb-3">
         <div class="glass-card border-start border-primary border-4">
-            <h6 class="text-muted">Total Teachers</h6>
+            <h6 class="text-muted">Total Users</h6>
             <h3>{{ users|length - 1 }}</h3>
         </div>
     </div>

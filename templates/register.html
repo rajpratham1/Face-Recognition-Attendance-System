@@ -1,15 +1,26 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="row justify-content-center mt-5">
-    <div class="col-md-5">
+<div class="row justify-content-center mt-4">
+    <div class="col-lg-6">
         <div class="glass-card">
-            <h2 class="text-center mb-4">Teacher Registration</h2>
+            <h2 class="text-center mb-2">Create Your Account</h2>
+            <p class="text-center text-muted mb-4">Choose role and complete registration for attendance access.</p>
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="mb-3">
                     <label class="form-label">Full Name</label>
-                    <input type="text" name="name" class="form-control" required placeholder="Dr. XYZ">
+                    <input type="text" name="name" class="form-control" required placeholder="Your full name">
                 </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Role</label>
+                    <select name="role" class="form-select" required>
+                        <option value="student">Student</option>
+                        <option value="teacher">Teacher</option>
+                    </select>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label">Department</label>
                     <select name="department" class="form-select" required>
@@ -21,15 +32,24 @@
                         <option value="Law">Law</option>
                     </select>
                 </div>
+
                 <div class="mb-3">
-                    <label class="form-label">Work Email</label>
-                    <input type="email" name="email" class="form-control" required placeholder="name@invertis.org">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-control" required placeholder="name@domain.com">
                 </div>
+
                 <div class="mb-3">
                     <label class="form-label">Password</label>
                     <input type="password" name="password" class="form-control" required minlength="6">
                 </div>
-                <button type="submit" class="btn btn-custom w-100 py-3">Register & Continue to Face Scan</button>
+                <div class="mb-3 form-check">
+                    <input class="form-check-input" type="checkbox" id="consent" name="consent" value="yes" required checked>
+                    <label class="form-check-label small" for="consent">
+                        I consent to biometric face processing and secure attendance audit logging.
+                    </label>
+                </div>
+
+                <button type="submit" class="btn btn-custom w-100 py-3">Register and Continue to Face Scan</button>
             </form>
             <p class="text-center mt-3 small">Already have an account? <a href="{{ url_for('login') }}">Login</a></p>
         </div>

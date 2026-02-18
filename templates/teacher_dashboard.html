@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="glass-card h-100">
+            <h4 class="mb-1">{{ current_user.name }}</h4>
+            <p class="text-muted mb-3">Teacher Panel • {{ current_user.department }}</p>
+            <div class="d-grid gap-2 mb-3">
+                <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom">Mark My Attendance</a>
+            </div>
+
+            <div class="panel-metric"><span>My Courses</span><strong>{{ teacher_courses|length }}</strong></div>
+            <div class="panel-metric"><span>Students Enrolled</span><strong>{{ students|length }}</strong></div>
+            <div class="panel-metric"><span>Live Sessions</span><strong>{{ active_session_count }}</strong></div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="glass-card mb-4">
+            <h5 class="mb-3">Create Course</h5>
+            <form method="POST" action="{{ url_for('create_course') }}" class="row g-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col-md-3"><input class="form-control" type="text" name="code" required placeholder="Code"></div>
+                <div class="col-md-5"><input class="form-control" type="text" name="title" required placeholder="Course title"></div>
+                <div class="col-md-2"><input class="form-control" type="text" name="section" required placeholder="Section"></div>
+                <div class="col-md-2 d-grid"><button class="btn btn-custom" type="submit">Add</button></div>
+            </form>
+        </div>
+
+        <div class="glass-card mb-4">
+            <h5 class="mb-3">Enroll Student by Email</h5>
+            {% if teacher_courses %}
+            <form method="POST" action="{{ url_for('enroll_student', course_id=teacher_courses[0].id) }}" id="enroll-form" class="row g-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col-md-4">
+                    <select id="enroll-course" class="form-select" required>
+                        {% for course in teacher_courses %}
+                        <option value="{{ course.id }}">{{ course.code }} - {{ course.section }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-6"><input class="form-control" type="email" name="student_email" required placeholder="student@email.com"></div>
+                <div class="col-md-2 d-grid"><button class="btn btn-outline-primary" type="submit">Enroll</button></div>
+            </form>
+            {% else %}
+            <p class="text-muted mb-0">Create at least one course first.</p>
+            {% endif %}
+        </div>
+
+        <div class="glass-card mb-4">
+            <h5 class="mb-3">Create Live Class Session</h5>
+            {% if teacher_courses %}
+            <form method="POST" action="{{ url_for('create_session') }}" class="row g-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col-md-5">
+                    <select class="form-select" name="course_id" required>
+                        {% for course in teacher_courses %}
+                        <option value="{{ course.id }}">{{ course.code }} - {{ course.title }} ({{ course.section }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4"><input class="form-control" type="text" name="room" required placeholder="Room / Lab"></div>
+                <div class="col-md-3">
+                    <select class="form-select" name="duration" required>
+                        <option value="10">10 min</option>
+                        <option value="15" selected>15 min</option>
+                        <option value="20">20 min</option>
+                        <option value="30">30 min</option>
+                        <option value="45">45 min</option>
+                    </select>
+                </div>
+                <div class="col-12 d-grid"><button class="btn btn-custom" type="submit">Start Session</button></div>
+            </form>
+            {% else %}
+            <p class="text-muted mb-0">Create a course first to start sessions.</p>
+            {% endif %}
+        </div>
+
+        <div class="glass-card mb-4">
+            <h5 class="mb-3">Session Attendance Panel</h5>
+            {% if teacher_sessions %}
+            <div class="session-grid">
+                {% for session in teacher_sessions %}
+                <div class="session-card">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <h6 class="mb-1">{{ session.course_code }} • {{ session.title }}</h6>
+                            <p class="small text-muted mb-1">{{ session.room }}</p>
+                            <p class="small mb-1">{{ session.starts_at|localdtfmt('%d %b %Y %I:%M %p') }} to {{ session.ends_at|localdtfmt('%I:%M %p') }}</p>
+                            <span class="badge {% if session.is_active and session.ends_at >= now %}bg-success{% else %}bg-secondary{% endif %}">
+                                {% if session.is_active and session.ends_at >= now %}Live{% else %}Closed{% endif %}
+                            </span>
+                        </div>
+                        <div class="text-end">
+                            <div class="small text-muted">Marked</div>
+                            <div class="fw-bold">{{ session_attendance_count_map.get(session.id, 0) }}</div>
+                        </div>
+                    </div>
+                    {% if session.is_active and session.ends_at >= now %}
+                    <form method="POST" action="{{ url_for('close_session', session_id=session.id) }}" class="mt-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn btn-sm btn-outline-danger" type="submit">Close Session</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted mb-0">No sessions created yet.</p>
+            {% endif %}
+        </div>
+
+        <div class="glass-card">
+            <h5 class="mb-3">My Course Enrollment Overview</h5>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Course</th>
+                            <th>Section</th>
+                            <th>Enrolled Students</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if teacher_courses %}
+                        {% for course in teacher_courses %}
+                        <tr>
+                            <td>{{ course.code }} - {{ course.title }}</td>
+                            <td>{{ course.section }}</td>
+                            <td>{{ course_enrollment_count_map.get(course.id, 0) }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr><td colspan="3" class="text-center text-muted py-3">No courses yet.</td></tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const enrollForm = document.getElementById('enroll-form');
+    const enrollCourse = document.getElementById('enroll-course');
+    if (enrollForm && enrollCourse) {
+        enrollCourse.addEventListener('change', () => {
+            enrollForm.action = `/teacher/courses/${enrollCourse.value}/enroll`;
+        });
+    }
+</script>
+{% endblock %}
+

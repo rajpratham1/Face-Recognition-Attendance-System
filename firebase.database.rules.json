@@ -1,0 +1,46 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "roles": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('roles').child(auth.uid).val() === 'admin')",
+        ".write": "auth != null && root.child('roles').child(auth.uid).val() === 'admin'"
+      }
+    },
+
+    "courses": {
+      "$courseId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')"
+      }
+    },
+
+    "sessions": {
+      "$sessionId": {
+        ".read": "auth != null",
+        ".write": "auth != null && (root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')"
+      }
+    },
+
+    "attendance": {
+      "$studentId": {
+        ".read": "auth != null && (auth.uid === $studentId || root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')",
+        "$sessionId": {
+          ".write": "auth != null && (auth.uid === $studentId || root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')",
+          ".validate": "newData.hasChildren(['studentId','courseCode','sessionId','markedAt','faceDistance'])"
+        }
+      }
+    },
+
+    "attendance_attempts": {
+      "$date": {
+        ".read": "auth != null && (root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')",
+        "$attemptId": {
+          ".write": "auth != null && (root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')"
+        }
+      }
+    }
+  }
+}

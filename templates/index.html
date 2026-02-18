@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center align-items-center" style="min-height: 70vh;">
+    <div class="col-md-8 text-center">
+        <div class="glass-card mb-4">
+            <h1 class="display-4 font-weight-bold mb-4">Smart Face Attendance</h1>
+            <p class="lead mb-4">Exclusive for Invertis University. Secure, real-time face recognition attendance with
+                geolocation verification.</p>
+
+            {% if current_user.is_authenticated %}
+            <div class="d-grid gap-3 d-md-flex justify-content-md-center">
+                <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom btn-lg px-5">Mark Participation</a>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary btn-lg px-5">My Dashboard</a>
+            </div>
+            {% else %}
+            <div class="d-grid gap-3 d-md-flex justify-content-md-center">
+                <a href="{{ url_for('login') }}" class="btn btn-custom btn-lg px-5">Login Now</a>
+                <a href="{{ url_for('register') }}" class="btn btn-outline-primary btn-lg px-5">Register</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

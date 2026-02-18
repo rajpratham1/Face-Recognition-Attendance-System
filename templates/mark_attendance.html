@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 text-center">
+        <div class="glass-card">
+            <h2 class="mb-4">Mark Attendance</h2>
+            <p class="text-muted">Verifying identity and location (Invertis campus only)</p>
+
+            <div id="location-status" class="alert alert-info py-2 small mb-3">
+                <i class="fas fa-map-marker-alt"></i> Getting geolocation...
+            </div>
+
+            <div class="camera-container mb-4">
+                <video id="video-preview" autoplay muted playsinline></video>
+                <div class="scan-overlay"></div>
+                <div id="status-text" class="mt-2 font-weight-bold text-primary pulse">Camera Ready</div>
+            </div>
+
+            <button id="mark-btn" class="btn btn-custom btn-lg w-100 mb-3" disabled>
+                Verify & Mark Attendance
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Place this in the head of base.html or here -->
+<script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+
+<script>
+    const video = document.getElementById('video-preview');
+    const markBtn = document.getElementById('mark-btn');
+    const statusText = document.getElementById('status-text');
+    const locStatus = document.getElementById('location-status');
+    let userCoords = { lat: null, lng: null };
+    let modelsLoaded = false;
+
+    // 1. Load Models
+    async function loadModels() {
+        statusText.innerText = "Loading AI Models...";
+        const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+        modelsLoaded = true;
+        statusText.innerText = "Camera Ready";
+        checkReady();
+    }
+
+    function checkReady() {
+        if (modelsLoaded && userCoords.lat !== null) {
+            markBtn.disabled = false;
+        }
+    }
+
+    // 2. Get Location
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                userCoords.lat = position.coords.latitude;
+                userCoords.lng = position.coords.longitude;
+                locStatus.className = "alert alert-success py-2 small mb-3";
+                locStatus.innerHTML = '<i class="fas fa-check-circle"></i> Location Verified';
+                checkReady();
+            },
+            (error) => {
+                locStatus.className = "alert alert-danger py-2 small mb-3";
+                locStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Location Access Required!';
+            }
+        );
+    }
+
+    // 3. Access Camera
+    navigator.mediaDevices.getUserMedia({ video: true })
+        .then(stream => {
+            video.srcObject = stream;
+            loadModels();
+        });
+
+    markBtn.addEventListener('click', async () => {
+        statusText.innerText = "Verifying Identity...";
+        markBtn.disabled = true;
+
+        // Detect face and get descriptor
+        const detections = await faceapi.detectSingleFace(video)
+            .withFaceLandmarks()
+            .withFaceDescriptor();
+
+        if (!detections) {
+            statusText.innerText = "No face detected. Look directly at camera.";
+            statusText.className = "mt-2 font-weight-bold text-danger";
+            markBtn.disabled = false;
+            return;
+        }
+
+        const descriptor = Array.from(detections.descriptor);
+
+        try {
+            const response = await fetch('/mark_attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    descriptor: descriptor,
+                    lat: userCoords.lat,
+                    lng: userCoords.lng
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                statusText.innerText = result.message;
+                statusText.className = "mt-2 font-weight-bold text-success";
+                setTimeout(() => window.location.href = '/dashboard', 2000);
+            } else {
+                statusText.innerText = result.message;
+                statusText.className = "mt-2 font-weight-bold text-danger";
+                markBtn.disabled = false;
+            }
+        } catch (error) {
+            statusText.innerText = "Connection error. Try again.";
+            markBtn.disabled = false;
+        }
+    });
+
+    // Disable button initially
+    markBtn.disabled = true;
+</script>
+{% endblock %}

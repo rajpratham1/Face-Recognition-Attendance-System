@@ -1,0 +1,69 @@
+MIT License
+
+Copyright (c) 2026 IIOT Group Project Team - Invertis University
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Third-Party Licenses
+
+This project uses the following open-source libraries:
+
+### Flask (BSD-3-Clause License)
+Copyright 2010 Pallets
+https://flask.palletsprojects.com/
+
+### face-api.js (MIT License)
+Copyright (c) 2018 Vincent Mühler
+https://github.com/justadudewhohacks/face-api.js
+
+### Bootstrap (MIT License)
+Copyright (c) 2011-2024 The Bootstrap Authors
+https://getbootstrap.com/
+
+### NumPy (BSD-3-Clause License)
+Copyright (c) 2005-2024, NumPy Developers
+https://numpy.org/
+
+### SQLAlchemy (MIT License)
+Copyright 2005-2024 SQLAlchemy authors and contributors
+https://www.sqlalchemy.org/
+
+For a complete list of dependencies and their licenses, see requirements.txt
+
+---
+
+## Privacy Notice
+
+This software processes biometric data (face descriptors) for attendance verification.
+By using this software, you agree that:
+
+1. Face descriptors (mathematical representations, not images) are stored
+2. Location coordinates are collected during attendance marking
+3. Device information is logged for security purposes
+4. All data is used solely for attendance tracking and fraud prevention
+
+The software does NOT:
+- Store face images or videos
+- Share biometric data with third parties
+- Use face data for purposes other than attendance verification
+
+Institutions using this software must comply with local data protection laws
+(GDPR, CCPA, etc.) and obtain proper consent from users.

@@ -1,0 +1,413 @@
+# ============================================
+# Python
+# ============================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Translations
+*.mo
+*.pot
+
+# Flask
+instance/
+.webassets-cache
+
+# Scrapy
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+.pybuilder/
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# poetry
+poetry.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# pytype static type analyzer
+.pytype/
+
+# Cython debug symbols
+cython_debug/
+
+# ============================================
+# Database
+# ============================================
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+instance/*.db
+
+# Database backups
+backups/
+*.sql
+*.dump
+
+# ============================================
+# Firebase
+# ============================================
+
+# Firebase service account keys (CRITICAL - NEVER COMMIT!)
+*serviceAccountKey.json
+*serviceAccount.json
+firebase-adminsdk-*.json
+google-credentials.json
+
+# Firebase config
+.firebaserc
+firebase-debug.log
+firebase-debug.*.log
+
+# ============================================
+# IDE & Editors
+# ============================================
+
+# VSCode
+.vscode/
+*.code-workspace
+.history/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+.*.swp
+.*.swo
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# TextMate
+*.tmproj
+*.tmproject
+tmtags
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# ============================================
+# Operating System
+# ============================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================
+# Application Specific
+# ============================================
+
+# Environment variables (CRITICAL - CONTAINS SECRETS!)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Keep example files
+!.env.example
+!.env.firebase.example
+
+# Logs
+*.log
+logs/
+app.log
+*.log.*
+
+# Uploaded files (if any)
+uploads/
+media/
+
+# Temporary files
+temp/
+tmp/
+*.tmp
+*.temp
+
+# Certificates & Keys
+*.pem
+*.key
+*.cert
+*.crt
+*.p12
+*.pfx
+
+# Secrets
+secrets/
+secret_key.txt
+.secrets
+
+# ============================================
+# Development & Testing
+# ============================================
+
+# Test outputs
+test_output/
+test-results/
+.tox/
+
+# Profiling data
+*.prof
+*.lprof
+
+# Documentation builds
+docs/_build/
+docs/_static/
+docs/_templates/
+
+# ============================================
+# Deployment
+# ============================================
+
+# Heroku
+.heroku/
+
+# Docker
+docker-compose.override.yml
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# ============================================
+# Version Control
+# ============================================
+
+# Git
+*.orig
+*.rej
+
+# SVN
+.svn/
+
+# Mercurial
+.hg/
+.hgignore
+.hgtags
+
+# ============================================
+# Misc
+# ============================================
+
+# Compressed files
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Node modules (if using any frontend build tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Compiled frontend assets (if applicable)
+static/dist/
+static/build/
+
+# ============================================
+# Project Specific Ignores
+# ============================================
+
+# Face recognition models (if downloaded locally)
+static/models/weights/
+
+# Large datasets
+datasets/
+
+# Migration artifacts (keep migrations folder, ignore if needed)
+# migrations/versions/*.pyc
+
+# Documentation that shouldn't be tracked (if auto-generated)
+# docs/api/_autosummary/
+
+# ============================================
+# Keep These Files
+# ============================================
+
+# Keep empty directories with .gitkeep
+!.gitkeep
+
+# Keep specific config examples
+!.env.example
+!.env.firebase.example
+
+# Keep documentation
+!README.md
+!LICENSE
+!CONTRIBUTING.md
+
+# ============================================
+# Notes
+# ============================================
+
+# To check what will be committed:
+# git status
+
+# To see ignored files:
+# git status --ignored
+
+# To force add an ignored file:
+# git add -f filename
+
+# ============================================

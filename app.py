@@ -1,6 +1,7 @@
 import hashlib
 import json
 import secrets
+from math import isfinite
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -87,7 +88,7 @@ def local_datetime_format_filter(value, fmt="%d %b %Y %I:%M %p"):
 
 @app.errorhandler(CSRFError)
 def handle_csrf_error(error):
-    if request.path.startswith("/api/"):
+    if request.path.startswith("/api/") or request.is_json:
         return jsonify({"success": False, "message": "Security token missing or expired. Refresh page and try again."}), 400
     flash("Security check failed. Please retry the action.", "danger")
     return redirect(url_for("index"))
@@ -263,10 +264,27 @@ def save_face():
 
     if not descriptor:
         return jsonify({"success": False, "message": "No face data received"})
+    if not isinstance(descriptor, list):
+        return jsonify({"success": False, "message": "Invalid face data format."}), 400
+    if len(descriptor) != 128:
+        return jsonify({"success": False, "message": "Invalid face data size. Please scan again."}), 400
 
-    current_user.face_encoding = json.dumps(descriptor)
-    current_user.face_registered = True
-    db.session.commit()
+    try:
+        normalized_descriptor = [float(v) for v in descriptor]
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Face data contains invalid values."}), 400
+
+    if any(not isfinite(v) for v in normalized_descriptor):
+        return jsonify({"success": False, "message": "Face data contains invalid values."}), 400
+
+    try:
+        current_user.face_encoding = json.dumps(normalized_descriptor)
+        current_user.face_registered = True
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Failed saving face descriptor for user_id=%s", current_user.id)
+        return jsonify({"success": False, "message": "Unable to save face data right now. Please try again."}), 500
 
     return jsonify({"success": True})
 

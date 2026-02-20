@@ -6,7 +6,7 @@
         <div class="glass-card text-center h-100">
             <div class="avatar-pill mb-3">{{ current_user.name[0] }}</div>
             <h4 class="mb-1">{{ current_user.name }}</h4>
-            <p class="text-muted mb-3">Student Panel • {{ current_user.department }}</p>
+            <p class="text-muted mb-3">Student Panel ï¿½ {{ current_user.department }}</p>
             <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom w-100 mb-2">Open Session Attendance</a>
             <div class="panel-metric mt-2"><span>Live Sessions</span><strong>{{ active_sessions|length }}</strong></div>
         </div>
@@ -19,7 +19,7 @@
             <div class="session-grid">
                 {% for course in enrolled_courses %}
                 <div class="session-card student-live">
-                    <h6 class="mb-1">{{ course.code }} • {{ course.title }}</h6>
+                    <h6 class="mb-1">{{ course.code }} ï¿½ {{ course.title }}</h6>
                     <p class="small text-muted mb-0">Section: {{ course.section }}</p>
                 </div>
                 {% endfor %}
@@ -35,7 +35,7 @@
             <div class="session-grid">
                 {% for session in active_sessions %}
                 <div class="session-card student-live">
-                    <h6 class="mb-1">{{ session.course_code }} • {{ session.title }}</h6>
+                    <h6 class="mb-1">{{ session.course_code }} ï¿½ {{ session.title }}</h6>
                     <p class="small text-muted mb-1">Room: {{ session.room }}</p>
                     <p class="small mb-0">Ends at {{ session.ends_at|localdtfmt('%I:%M %p') }} ({{ app_timezone }})</p>
                 </div>

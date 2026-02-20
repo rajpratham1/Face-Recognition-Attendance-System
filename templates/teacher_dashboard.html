@@ -5,7 +5,7 @@
     <div class="col-lg-4">
         <div class="glass-card h-100">
             <h4 class="mb-1">{{ current_user.name }}</h4>
-            <p class="text-muted mb-3">Teacher Panel • {{ current_user.department }}</p>
+            <p class="text-muted mb-3">Teacher Panel ï¿½ {{ current_user.department }}</p>
             <div class="d-grid gap-2 mb-3">
                 <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom">Mark My Attendance</a>
             </div>
@@ -85,7 +85,7 @@
                 <div class="session-card">
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div>
-                            <h6 class="mb-1">{{ session.course_code }} • {{ session.title }}</h6>
+                            <h6 class="mb-1">{{ session.course_code }} ï¿½ {{ session.title }}</h6>
                             <p class="small text-muted mb-1">{{ session.room }}</p>
                             <p class="small mb-1">{{ session.starts_at|localdtfmt('%d %b %Y %I:%M %p') }} to {{ session.ends_at|localdtfmt('%I:%M %p') }}</p>
                             <span class="badge {% if session.is_active and session.ends_at >= now %}bg-success{% else %}bg-secondary{% endif %}">

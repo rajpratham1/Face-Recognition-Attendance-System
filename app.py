@@ -545,15 +545,43 @@ def mark_session_attendance():
         db.session.commit()
         return jsonify({"success": False, "message": "No face detected!"}), 400
 
+
     known_encoding = np.array(json.loads(current_user.face_encoding))
     unknown_encoding = np.array(descriptor)
     distance = float(np.linalg.norm(known_encoding - unknown_encoding))
 
-    if distance >= 0.6:
-        record_attempt(session.id, current_user.id, False, "Face mismatch", lat, lng, distance, device_hash, ip_address, user_agent)
-        db.session.commit()
-        return jsonify({"success": False, "message": "Face verification failed. Please try again."}), 400
+    # Detect possible spoofing attack
+    if distance > 0.8:
+        app.logger.warning("🚨 Possible spoofing attempt (photo attack)")
 
+    # UNKNOWN PERSON ALERT
+    if distance >= 0.6:
+        record_attempt(
+            session.id,
+            current_user.id,
+            False,
+            "Unknown person detected",
+            lat,
+            lng,
+            distance,
+            device_hash,
+            ip_address,
+            user_agent
+        )
+
+        db.session.commit()
+
+        app.logger.warning(
+            f"⚠ Unknown face detected in session {session.id} for user {current_user.id}"
+        )
+
+        return jsonify({
+            "success": False,
+            "message": "⚠ Unknown face detected! Attendance blocked."
+        }), 400
+
+
+    # FACE VERIFIED → MARK ATTENDANCE
     entry = SessionAttendance(
         session_id=session.id,
         student_id=current_user.id,
@@ -564,12 +592,30 @@ def mark_session_attendance():
         ip_address=ip_address,
         user_agent=user_agent,
     )
+
     db.session.add(entry)
-    record_attempt(session.id, current_user.id, True, "Attendance marked", lat, lng, distance, device_hash, ip_address, user_agent)
+
+    record_attempt(
+        session.id,
+        current_user.id,
+        True,
+        "Attendance marked",
+        lat,
+        lng,
+        distance,
+        device_hash,
+        ip_address,
+        user_agent
+    )
+
     db.session.commit()
+
     sync_session_attendance(app, entry, session, current_user)
 
-    return jsonify({"success": True, "message": f"Attendance marked for {session.course_code} ({session.title})."})
+    return jsonify({
+        "success": True,
+        "message": f"Attendance marked for {session.course_code} ({session.title})."
+    })
 
 
 @app.route("/login", methods=["GET", "POST"])

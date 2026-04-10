@@ -1,3 +1,6 @@
+# Main Flask application file
+# This file handles routing, authentication, attendance logic,
+# face recognition verification, and API endpoints
 import hashlib
 import json
 import secrets
@@ -43,7 +46,7 @@ login_manager = LoginManager()
 login_manager.login_view = "login"
 login_manager.init_app(app)
 
-
+# This function loads user from database for session management
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -258,6 +261,8 @@ def register_face():
 @app.route("/save_face", methods=["POST"])
 @login_required
 @limiter.limit("30 per hour")
+# This function saves user's face encoding after registration
+# Face data is stored as a 128-dimension vector
 def save_face():
     data = request.json or {}
     descriptor = data.get("descriptor")
@@ -292,6 +297,8 @@ def save_face():
 @app.route("/mark_attendance", methods=["GET", "POST"])
 @login_required
 @limiter.limit("20 per minute")
+# This function handles attendance marking
+# It verifies face and location before marking attendance
 def mark_attendance():
     if not current_user.face_registered:
         flash("Please register your face first!", "warning")
@@ -307,6 +314,7 @@ def mark_attendance():
         lat = data.get("lat")
         lng = data.get("lng")
 
+# This function checks if user is inside campus using geolocation
         if not is_within_invertis(lat, lng):
             return jsonify({"success": False, "message": "Attendance can only be marked within Invertis University campus!"}), 400
 
@@ -485,6 +493,8 @@ def active_sessions():
 @app.route("/api/session_attendance/mark", methods=["POST"])
 @login_required
 @limiter.limit("10 per minute")
+# This API endpoint marks attendance for a class session
+# It checks face, location, session status, and prevents duplicates
 def mark_session_attendance():
     if current_user.role != "student":
         return jsonify({"success": False, "message": "Only students can use session attendance."}), 403

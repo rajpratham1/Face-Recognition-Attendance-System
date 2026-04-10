@@ -743,29 +743,40 @@ def dashboard():
             now=now,
         )
 
+    # STUDENT DASHBOARD
     my_attendance = Attendance.query.filter_by(user_id=current_user.id).order_by(Attendance.date.desc()).all()
+
+    total_days = len(my_attendance)
+    present_days = total_days
+
+    attendance_percentage = 0
+    if total_days > 0:
+        attendance_percentage = round((present_days / total_days) * 100, 2)
+
     active_sessions = student_active_sessions(current_user.id)
+
     session_records = (
         SessionAttendance.query.filter_by(student_id=current_user.id)
         .order_by(SessionAttendance.marked_at.desc())
         .limit(15)
         .all()
     )
+
     enrolled_courses = (
         Course.query.join(Enrollment, Enrollment.course_id == Course.id)
         .filter(Enrollment.student_id == current_user.id)
         .order_by(Course.code.asc())
         .all()
     )
+
     return render_template(
         "student_dashboard.html",
         attendance=my_attendance,
         active_sessions=active_sessions,
         session_records=session_records,
         enrolled_courses=enrolled_courses,
+        attendance_percentage=attendance_percentage,
     )
-
-
 with app.app_context():
     ensure_schema_compatibility()
 

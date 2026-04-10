@@ -69,7 +69,9 @@
                         </tr>
                         {% endfor %}
                         {% else %}
-                        <tr><td colspan="4" class="text-center text-muted py-3">No session attendance records yet.</td></tr>
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-3">No session attendance records yet.</td>
+                        </tr>
                         {% endif %}
                     </tbody>
                 </table>
@@ -78,6 +80,9 @@
 
         <div class="glass-card">
             <h4 class="mb-3">My Daily Attendance Records</h4>
+
+            <h5 style="color: rgb(4, 67, 18); font-weight: bold;">Attendance(%): {{ attendance_percentage }}</h5>
+
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead>
@@ -97,7 +102,9 @@
                         </tr>
                         {% endfor %}
                         {% else %}
-                        <tr><td colspan="3" class="text-center py-4 text-muted">No daily records found yet.</td></tr>
+                        <tr>
+                            <td colspan="3" class="text-center py-4 text-muted">No daily records found yet.</td>
+                        </tr>
                         {% endif %}
                     </tbody>
                 </table>
@@ -106,4 +113,3 @@
     </div>
 </div>
 {% endblock %}
-

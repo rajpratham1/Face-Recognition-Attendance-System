@@ -35,3 +35,14 @@ class Config:
     INVERTIS_LAT = 28.325764684367748
     INVERTIS_LNG = 79.46097110207619
     ALLOWED_RADIUS_METERS = 100  # 100 meters radius as requested
+
+    # ─── Email Notification Settings ────────────────────────────────────────────
+    # Set these in your .env file to enable attendance email notifications.
+    # MAIL_USERNAME  → your Gmail address   (e.g. yourapp@gmail.com)
+    # MAIL_PASSWORD  → Gmail App Password   (16-char, NOT your login password)
+    # Get App Password: Google Account → Security → 2-Step → App Passwords
+    MAIL_SERVER    = os.environ.get('MAIL_SERVER',    'smtp.gmail.com')
+    MAIL_PORT      = int(os.environ.get('MAIL_PORT',  '587'))
+    MAIL_USERNAME  = os.environ.get('MAIL_USERNAME',  '')
+    MAIL_PASSWORD  = os.environ.get('MAIL_PASSWORD',  '')
+    MAIL_FROM_NAME = os.environ.get('MAIL_FROM_NAME', 'Attendance System')

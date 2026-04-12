@@ -20,6 +20,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from config import Config
 from firebase_service import init_firebase, sync_attendance_attempt, sync_session_attendance
+from email_service import send_attendance_email  # ← Email notification feature
 from models import (
     Attendance,
     AttendanceAttempt,
@@ -341,6 +342,16 @@ def mark_attendance():
             )
             db.session.add(new_attendance)
             db.session.commit()
+            # ── Email Notification ──────────────────────────────────────────────
+            send_attendance_email(
+                app,
+                student_name=current_user.name,
+                student_email=current_user.email,
+                course_code="General",
+                course_title="Daily Attendance",
+                marked_at=datetime.now(timezone.utc),
+            )
+            # ───────────────────────────────────────────────────────────────────
             return jsonify({"success": True, "message": "Attendance marked successfully!"})
 
         return jsonify({"success": False, "message": "Face verification failed!"}), 400
@@ -621,6 +632,17 @@ def mark_session_attendance():
     db.session.commit()
 
     sync_session_attendance(app, entry, session, current_user)
+
+    # ── Email Notification ──────────────────────────────────────────────────────
+    send_attendance_email(
+        app,
+        student_name=current_user.name,
+        student_email=current_user.email,
+        course_code=session.course_code,
+        course_title=session.title,
+        marked_at=datetime.now(timezone.utc),
+    )
+    # ────────────────────────────────────────────────────────────────────────────
 
     return jsonify({
         "success": True,

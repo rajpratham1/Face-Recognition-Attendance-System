@@ -1,3 +1,6 @@
+# Main Flask application file
+# This file handles routing, authentication, attendance logic,
+# face recognition verification, and API endpoints
 import hashlib
 import json
 import secrets
@@ -17,6 +20,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from config import Config
 from firebase_service import init_firebase, sync_attendance_attempt, sync_session_attendance
+from email_service import send_attendance_email  # ← Email notification feature
 from models import (
     Attendance,
     AttendanceAttempt,
@@ -43,7 +47,7 @@ login_manager = LoginManager()
 login_manager.login_view = "login"
 login_manager.init_app(app)
 
-
+# This function loads user from database for session management
 @login_manager.user_loader
 def load_user(user_id):
     return db.session.get(User, int(user_id))
@@ -258,6 +262,8 @@ def register_face():
 @app.route("/save_face", methods=["POST"])
 @login_required
 @limiter.limit("30 per hour")
+# This function saves user's face encoding after registration
+# Face data is stored as a 128-dimension vector
 def save_face():
     data = request.json or {}
     descriptor = data.get("descriptor")
@@ -292,6 +298,8 @@ def save_face():
 @app.route("/mark_attendance", methods=["GET", "POST"])
 @login_required
 @limiter.limit("20 per minute")
+# This function handles attendance marking
+# It verifies face and location before marking attendance
 def mark_attendance():
     if not current_user.face_registered:
         flash("Please register your face first!", "warning")
@@ -307,6 +315,7 @@ def mark_attendance():
         lat = data.get("lat")
         lng = data.get("lng")
 
+# This function checks if user is inside campus using geolocation
         if not is_within_invertis(lat, lng):
             return jsonify({"success": False, "message": "Attendance can only be marked within Invertis University campus!"}), 400
 
@@ -333,6 +342,16 @@ def mark_attendance():
             )
             db.session.add(new_attendance)
             db.session.commit()
+            # ── Email Notification ──────────────────────────────────────────────
+            send_attendance_email(
+                app,
+                student_name=current_user.name,
+                student_email=current_user.email,
+                course_code="General",
+                course_title="Daily Attendance",
+                marked_at=datetime.now(timezone.utc),
+            )
+            # ───────────────────────────────────────────────────────────────────
             return jsonify({"success": True, "message": "Attendance marked successfully!"})
 
         return jsonify({"success": False, "message": "Face verification failed!"}), 400
@@ -485,6 +504,8 @@ def active_sessions():
 @app.route("/api/session_attendance/mark", methods=["POST"])
 @login_required
 @limiter.limit("10 per minute")
+# This API endpoint marks attendance for a class session
+# It checks face, location, session status, and prevents duplicates
 def mark_session_attendance():
     if current_user.role != "student":
         return jsonify({"success": False, "message": "Only students can use session attendance."}), 403
@@ -612,6 +633,17 @@ def mark_session_attendance():
 
     sync_session_attendance(app, entry, session, current_user)
 
+    # ── Email Notification ──────────────────────────────────────────────────────
+    send_attendance_email(
+        app,
+        student_name=current_user.name,
+        student_email=current_user.email,
+        course_code=session.course_code,
+        course_title=session.title,
+        marked_at=datetime.now(timezone.utc),
+    )
+    # ────────────────────────────────────────────────────────────────────────────
+
     return jsonify({
         "success": True,
         "message": f"Attendance marked for {session.course_code} ({session.title})."
@@ -733,29 +765,40 @@ def dashboard():
             now=now,
         )
 
+    # STUDENT DASHBOARD
     my_attendance = Attendance.query.filter_by(user_id=current_user.id).order_by(Attendance.date.desc()).all()
+
+    total_days = len(my_attendance)
+    present_days = total_days
+
+    attendance_percentage = 0
+    if total_days > 0:
+        attendance_percentage = round((present_days / total_days) * 100, 2)
+
     active_sessions = student_active_sessions(current_user.id)
+
     session_records = (
         SessionAttendance.query.filter_by(student_id=current_user.id)
         .order_by(SessionAttendance.marked_at.desc())
         .limit(15)
         .all()
     )
+
     enrolled_courses = (
         Course.query.join(Enrollment, Enrollment.course_id == Course.id)
         .filter(Enrollment.student_id == current_user.id)
         .order_by(Course.code.asc())
         .all()
     )
+
     return render_template(
         "student_dashboard.html",
         attendance=my_attendance,
         active_sessions=active_sessions,
         session_records=session_records,
         enrolled_courses=enrolled_courses,
+        attendance_percentage=attendance_percentage,
     )
-
-
 with app.app_context():
     ensure_schema_compatibility()
 

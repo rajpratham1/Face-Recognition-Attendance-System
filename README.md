@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/Status-Active-success.svg)]()
 
-A modern, secure, and intelligent attendance management system built for **Invertis University** that uses face recognition technology to eliminate proxy attendance and automate attendance tracking for academic institutions.
+A modern, secure, and intelligent attendance management system built for **Invertis University, Bareilly** that uses face recognition technology to eliminate proxy attendance and automate academic attendance tracking.
 
 ---
 
@@ -13,36 +13,37 @@ A modern, secure, and intelligent attendance management system built for **Inver
 
 - [Overview](#-overview)
 - [Key Features](#-key-features)
+- [Project File Structure](#-project-file-structure)
 - [Tech Stack](#-tech-stack)
 - [System Architecture](#-system-architecture)
 - [Quick Start](#-quick-start)
 - [Installation](#-installation)
 - [Configuration](#-configuration)
-- [Usage](#-usage)
+- [Usage Guide](#-usage-guide)
 - [API Documentation](#-api-documentation)
 - [Security](#-security)
-- [Contributing](#-contributing)
-- [Testing](#-testing)
 - [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
 - [License](#-license)
 
 ---
 
 ## 🎯 Overview
 
-Traditional attendance systems are prone to proxy attendance and manual errors. Our **Face Recognition Attendance System** leverages cutting-edge biometric technology to ensure:
+Traditional attendance systems are prone to proxy attendance and manual errors. This **Face Recognition Attendance System** leverages client-side biometric technology to ensure:
 
-- **100% Authentic Attendance**: Face verification prevents proxy attendance
-- **Real-time Session Tracking**: Teachers create live sessions, students mark in real-time
-- **Geofencing**: Location verification ensures on-campus attendance
-- **Security & Privacy**: Client-side face processing, minimal data storage
-- **Role-Based System**: Separate interfaces for Students, Teachers, and Admins
+- **100% Authentic Attendance** — Face verification prevents proxy attendance
+- **Cross-Role Face Uniqueness** — One face can only be linked to one account globally (no same person as student + teacher)
+- **Real-time Session Tracking** — Teachers create live sessions; students mark in real-time
+- **Geofencing** — Location verification ensures on-campus attendance (100m radius)
+- **Dual Attendance Records** — Session-based + daily attendance both tracked
+- **Privacy-First** — All face processing happens client-side; only 128-D math vectors stored
 
-### 🎥 System Demo
+### System Demo Flow
 ```
-Student Flow: Register → Scan Face → Enroll in Course → Join Live Session → Mark Attendance
-Teacher Flow: Create Course → Enroll Students → Start Session → Monitor Attendance → Generate Reports
-Admin Flow: Monitor System → View Analytics → Manage Users → Audit Logs
+Student: Register → Scan Face → Enroll in Course → Join Live Session → Mark Attendance
+Teacher: Create Course → Enroll Students → Start Session → Monitor → Close Session
+Admin:   Monitor System → View Analytics → Manage Users → Audit Logs
 ```
 
 ---
@@ -50,43 +51,142 @@ Admin Flow: Monitor System → View Analytics → Manage Users → Audit Logs
 ## ✨ Key Features
 
 ### 👤 For Students
-- ✅ **Face Registration**: One-time biometric enrollment using webcam
-- ✅ **Live Session View**: Real-time display of active class sessions
-- ✅ **One-Click Attendance**: Face + location verification in seconds
-- ✅ **Attendance History**: View session-wise and daily attendance records
-- ✅ **Dashboard Analytics**: Track enrolled courses and attendance status
+| Feature | Description |
+|---|---|
+| **Face Registration** | One-time biometric enrollment; 5 frames silently averaged for accuracy |
+| **Face Uniqueness Enforcement** | Cannot register a face already linked to any other account (any role) |
+| **Live Session View** | Real-time display of active class sessions |
+| **One-Click Attendance** | Face + GPS location verified in seconds |
+| **Session Attendance History** | View per-session records with date, time, course |
+| **Daily Attendance Records** | Auto-populated whenever a session attendance is marked |
+| **Attendance Percentage** | Real-time % based on sessions attended vs sessions held |
+| **Enrolled Courses Panel** | View all courses you are enrolled in |
 
 ### 👨‍🏫 For Teachers
-- ✅ **Course Management**: Create courses with sections
-- ✅ **Student Enrollment**: Enroll students via email
-- ✅ **Live Session Control**: Start sessions with customizable duration (5-120 mins)
-- ✅ **Real-time Monitoring**: See attendance marking in real-time
-- ✅ **Attendance Reports**: Download session-wise attendance data
-- ✅ **Student Analytics**: View enrolled students' attendance patterns
+| Feature | Description |
+|---|---|
+| **Course Management** | Create courses with code, title, and section |
+| **Student Enrollment** | Enroll students into courses by email |
+| **Live Session Control** | Start sessions with room + duration (5–120 minutes) |
+| **Real-time Monitoring** | Session attendance count shown on dashboard |
+| **Close Sessions** | Manually end a session before it auto-expires |
+| **Student Analytics** | 7-day attendance pattern for each enrolled student |
+| **Own Attendance Record** | Teachers can also view their personal daily attendance |
 
 ### 👨‍💼 For Admins
-- ✅ **System Dashboard**: Overview of all users, sessions, and attendance
-- ✅ **User Management**: View and manage all faculty and students
-- ✅ **Attendance Analytics**: 7-day attendance trends and statistics
-- ✅ **Audit Logs**: Track all attendance attempts (successful and failed)
-- ✅ **Fraud Detection**: Device fingerprinting and location tracking
+| Feature | Description |
+|---|---|
+| **System Dashboard** | Overview of all users and 7-day attendance grid |
+| **User Management** | See all students, teachers, and admins |
+| **Attendance Analytics** | Today's count + recent history per user |
+| **Print Reports** | Browser-based print/PDF of attendance reports |
+| **Audit Log** | All attempts (success + failure) tracked in `AttendanceAttempt` table |
 
 ### 🔐 Security Features
-- 🛡️ **CSRF Protection**: All forms protected with CSRF tokens
-- 🛡️ **Rate Limiting**: Prevents brute force and DoS attacks
-- 🛡️ **Geofencing**: 100-meter radius enforcement from campus
-- 🛡️ **Device Fingerprinting**: Tracks unique devices per user
-- 🛡️ **IP Tracking**: Logs IP addresses for audit trails
-- 🛡️ **Multi-Face Prevention**: Blocks attendance with multiple faces in frame
-- 🛡️ **Session Security**: HTTPOnly cookies, secure session management
+| Feature | Detail |
+|---|---|
+| **CSRF Protection** | Every POST request protected with Flask-WTF tokens |
+| **Rate Limiting** | Login: 5/min · Register: 20/hr · Mark: 10/min · Save Face: 30/hr |
+| **Geofencing** | 100-meter radius around Invertis University (lat/lng in `config.py`) |
+| **Face Uniqueness** | Euclidean distance check vs ALL registered users before saving |
+| **Spoofing Detection** | Distance > 0.8 logged as possible photo/spoof attack |
+| **Device Fingerprinting** | SHA-256 hash of device ID stored per attendance record |
+| **IP + User-Agent Logging** | Recorded for every attendance attempt |
+| **Session Security** | HTTPOnly + SameSite=Lax cookies; Secure flag in production |
+| **Password Security** | Scrypt hashing (stronger than bcrypt) |
 
 ### 🌐 Advanced Features
-- 📊 **Firebase Cloud Sync**: Optional real-time cloud backup
-- 🗺️ **Geo-location Tracking**: Stores latitude/longitude for verification
-- 📱 **Mobile Responsive**: Works on smartphones and tablets
-- 🧪 **Liveness Detection**: UI prompts to prevent photo spoofing
-- 📈 **Analytics Dashboard**: Visual attendance trends and statistics
-- 🔄 **Database Migrations**: Schema versioning with Flask-Migrate
+- 📊 **Firebase Cloud Sync** — Optional real-time cloud backup for attendance & attempts
+- 🔄 **Startup Backfill** — On first launch after update, auto-creates daily attendance from existing session records
+- 📧 **Email Notifications** — Sends attendance confirmation email on mark (configurable)
+- 🗺️ **Location Storage** — Lat/lng saved per record for audit
+- 📱 **Mobile Responsive** — Works on phones and tablets via Bootstrap
+
+---
+
+## 📁 Project File Structure
+
+```
+Face-Recognition-Attendance-System/
+│
+├── app.py                          # Main Flask app — all routes, business logic
+│   ├── /register                   #   Account registration (student/teacher)
+│   ├── /register_face              #   Face ID registration page
+│   ├── /save_face                  #   API: save face descriptor + uniqueness check
+│   ├── /login  /logout             #   Auth routes
+│   ├── /dashboard                  #   Role-based dashboard (student/teacher/admin)
+│   ├── /mark_attendance            #   Student attendance page + teacher daily
+│   ├── /api/active_sessions        #   API: list live sessions for student
+│   ├── /api/session_attendance/mark #  API: verify face+GPS, mark session attendance
+│   ├── /teacher/courses/create     #   Create a course
+│   ├── /teacher/courses/<id>/enroll #  Enroll student by email
+│   ├── /teacher/sessions/create    #   Start a live class session
+│   └── /teacher/sessions/<id>/close #  Close a session
+│
+├── models.py                       # SQLAlchemy database models
+│   ├── User                        #   id, name, email, role, face_encoding, face_registered
+│   ├── Attendance                  #   Daily attendance record (date + time)
+│   ├── ClassSession                #   Live class session (course, room, start/end)
+│   ├── SessionAttendance           #   Per-session attendance record per student
+│   ├── Course                      #   Course (code, title, section, teacher)
+│   ├── Enrollment                  #   Student ↔ Course link
+│   └── AttendanceAttempt           #   Audit log of every attendance attempt
+│
+├── config.py                       # App configuration
+│   ├── DB, secret key, timezone    #   Loaded from .env
+│   ├── INVERTIS_LAT / INVERTIS_LNG #   Campus coordinates (Bareilly, UP)
+│   ├── ALLOWED_RADIUS_METERS = 100 #   Geofence radius
+│   └── Firebase / Email settings   #   Optional integrations
+│
+├── email_service.py                # Sends attendance confirmation emails via SMTP
+├── firebase_service.py             # Optional Firebase Realtime DB sync
+├── create_admin.py                 # One-time script to create admin account
+├── manage.py                       # Flask-Migrate wrapper for DB migrations
+├── wsgi.py                         # WSGI entry point for production (Gunicorn)
+│
+├── templates/                      # Jinja2 HTML templates
+│   ├── base.html                   #   Base layout (navbar, footer, CSRF helper)
+│   ├── index.html                  #   Landing page
+│   ├── register.html               #   Registration form
+│   ├── login.html                  #   Login form
+│   ├── register_face.html          #   Face scan UI (silent 5-sample capture)
+│   ├── student_dashboard.html      #   Student: courses, sessions, attendance %
+│   ├── teacher_dashboard.html      #   Teacher: courses, sessions, student analytics
+│   ├── admin_dashboard.html        #   Admin: all users, 7-day attendance grid
+│   ├── mark_attendance.html        #   Teacher daily attendance page
+│   ├── student_mark_attendance.html #  Student session attendance + face cam
+│   └── user_dashboard.html         #  Generic profile dashboard
+│
+├── static/
+│   ├── style.css                   #   Global styles (glassmorphism, dark theme)
+│   ├── logo.svg                    #   App logo
+│   └── favicon.svg                 #   Browser tab icon
+│
+├── scripts/
+│   └── backup_db.py                #   Database backup utility script
+│
+├── deployment/
+│   └── firebase.database.indexes.json  # Firebase Realtime DB index rules
+│
+├── tests/                          # Pytest test suite
+│   ├── test_basic.py
+│   ├── test_auth.py
+│   ├── test_attendance.py
+│   ├── test_api.py
+│   └── test_security.py
+│
+├── instance/
+│   └── attendance.db               # SQLite database (auto-created, gitignored)
+│
+├── requirements.txt                # Python dependencies
+├── .env.example                    # Environment variable template
+├── .env.firebase.example           # Firebase config template
+├── .gitignore
+├── README.md
+├── LICENSE
+├── CHANGELOG.md
+└── CONTRIBUTING.md
+```
 
 ---
 
@@ -99,34 +199,26 @@ Admin Flow: Monitor System → View Analytics → Manage Users → Audit Logs
 | **Flask** | 3.0.0 | Web framework |
 | **SQLAlchemy** | 3.1.1 | ORM for database |
 | **Flask-Login** | 0.6.3 | User session management |
+| **Flask-WTF** | Latest | CSRF protection |
 | **Flask-Limiter** | 3.10.1 | Rate limiting |
 | **Flask-Migrate** | 4.0.7 | Database migrations |
 | **Firebase Admin** | 6.7.0 | Cloud sync (optional) |
-| **Werkzeug** | 3.0.1 | WSGI utilities |
-| **Geopy** | 2.4.1 | Geolocation distance calculation |
-| **NumPy** | Latest | Face descriptor distance calculation |
+| **Geopy** | 2.4.1 | Geodesic distance for geofencing |
+| **NumPy** | Latest | Euclidean distance for face matching |
 
 ### Frontend
 | Technology | Purpose |
 |------------|---------|
-| **HTML5/CSS3** | Markup and styling |
-| **JavaScript (ES6+)** | Client-side logic |
-| **Bootstrap 5** | Responsive UI framework |
-| **face-api.js** | Face detection and recognition |
-| **Font Awesome** | Icons |
+| **HTML5 / CSS3** | Structure and styling |
+| **JavaScript ES6+** | Client-side logic |
+| **Bootstrap 5** | Responsive grid and components |
+| **face-api.js 0.22.2** | Browser-side face detection and 128-D descriptor extraction |
 
 ### Database
-| Type | Environment | Purpose |
-|------|-------------|---------|
-| **SQLite** | Development | Local database |
-| **PostgreSQL** | Production | Scalable cloud database |
-
-### Deployment
-| Service | Purpose |
-|---------|---------|
-| **Gunicorn** | WSGI server |
-| **Heroku/AWS** | Cloud hosting |
-| **Firebase Realtime DB** | Cloud backup & audit |
+| Type | Environment |
+|------|-------------|
+| **SQLite** | Development (auto-created at `instance/attendance.db`) |
+| **PostgreSQL** | Production (set `DATABASE_URL` in `.env`) |
 
 ---
 
@@ -135,73 +227,58 @@ Admin Flow: Monitor System → View Analytics → Manage Users → Audit Logs
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    CLIENT (Browser)                         │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐     │
-│  │  Camera API  │  │  face-api.js │  │  Geolocation │     │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘     │
-│         │                  │                  │              │
-│         └──────────────────┼──────────────────┘              │
-│                            │                                 │
-│                    ┌───────▼────────┐                       │
-│                    │  Fetch API     │                       │
-│                    │  (AJAX + CSRF) │                       │
-│                    └───────┬────────┘                       │
-└────────────────────────────┼──────────────────────────────┘
-                             │ HTTPS
-┌────────────────────────────▼──────────────────────────────┐
-│                    FLASK SERVER                            │
-│  ┌──────────────────────────────────────────────────────┐ │
-│  │         Application Layer (app.py)                   │ │
-│  │  ┌────────────┐  ┌────────────┐  ┌────────────┐    │ │
-│  │  │   Routes   │  │ Auth Logic │  │  Business  │    │ │
-│  │  │  Handlers  │  │  (Login)   │  │   Logic    │    │ │
-│  │  └────────────┘  └────────────┘  └────────────┘    │ │
-│  └──────────────────────────────────────────────────────┘ │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐ │
-│  │         Security Layer                                │ │
-│  │  [CSRF Protection][Rate Limiter][Role Validator]     │ │
-│  └──────────────────────────────────────────────────────┘ │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐ │
-│  │         Data Layer (models.py)                       │ │
-│  │  [User][Course][Enrollment][ClassSession]            │ │
-│  │  [SessionAttendance][AttendanceAttempt]              │ │
-│  └──────────────────────────────────────────────────────┘ │
-│                            │                               │
-└────────────────────────────┼───────────────────────────────┘
-                             │
-                ┌────────────┴────────────┐
-                │                         │
-        ┌───────▼─────┐         ┌────────▼─────────┐
-        │  SQLite/    │         │  Firebase         │
-        │  PostgreSQL │         │  Realtime DB      │
-        │  (Primary)  │         │  (Audit/Backup)   │
-        └─────────────┘         └──────────────────┘
+│  [Camera API]  [face-api.js]  [Geolocation API]             │
+│         ↓            ↓               ↓                      │
+│              Fetch API (AJAX + CSRF Token)                   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ HTTPS POST
+┌──────────────────────▼──────────────────────────────────────┐
+│                  FLASK SERVER (app.py)                       │
+│  [CSRF Check] → [Rate Limiter] → [Login Required]           │
+│  [Role Validator] → [Business Logic] → [Face Uniqueness]    │
+│                       ↓                                      │
+│              models.py (SQLAlchemy ORM)                     │
+│  User | Course | Enrollment | ClassSession                  │
+│  SessionAttendance | Attendance | AttendanceAttempt         │
+└──────────────┬───────────────────────────┬──────────────────┘
+               ↓                           ↓
+        SQLite / PostgreSQL         Firebase Realtime DB
+         (Primary DB)               (Audit / Cloud Backup)
 ```
 
-### Data Flow - Student Marking Attendance
-
+### Attendance Marking Flow (Student)
 ```
 1. Student opens /mark_attendance
-2. Browser requests camera + geolocation permissions
-3. face-api.js loads models from CDN
-4. Student clicks "Verify and Mark Attendance"
-5. face-api.js detects face → extracts 128-D descriptor
-6. JavaScript checks: single face? geofence OK?
-7. Sends POST to /api/session_attendance/mark with:
-   - session_id
-   - descriptor (128 floats)
-   - latitude, longitude
-   - device_id (localStorage)
-8. Flask validates:
-   - Session active?
-   - Student enrolled in course?
-   - Within 100m of campus?
-   - Face matches registered descriptor?
-   - Not already marked?
-9. If valid: Save to SessionAttendance + AttendanceAttempt
-10. Sync to Firebase (optional)
-11. Return success → Redirect to dashboard
+2. Browser loads face-api.js models from CDN
+3. Camera starts → GPS location acquired
+4. Student clicks "Verify and Mark Session Attendance"
+5. face-api.js silently captures 5 frames → averages → 128-D vector
+6. JavaScript validates: single face? inside geofence?
+7. POST /api/session_attendance/mark  {session_id, descriptor, lat, lng, device_id}
+8. Flask checks:
+   ├── Session active and within time window?
+   ├── Student enrolled in that course?
+   ├── Within 100m of campus?
+   ├── Face distance < 0.6 (Euclidean)?
+   └── Not already marked for this session?
+9. ✅ Save SessionAttendance + upsert daily Attendance record
+10. Sync to Firebase (if configured)
+11. Send email notification (if configured)
+12. Return success → Student redirected to dashboard
+```
+
+### Face Registration Flow
+```
+1. Camera starts → face-api.js models load
+2. User clicks "Scan My Face"
+3. 5 face frames silently captured (500ms apart)
+4. All 5 descriptors averaged → single robust 128-D vector
+5. POST /save_face {descriptor: [128 floats]}
+6. Server checks:
+   ├── Valid 128-D vector with finite values?
+   └── Distance vs ALL registered users < 0.50?  → 409 Conflict if match found
+7. ✅ Save face_encoding + face_registered=True
+8. Redirect to dashboard
 ```
 
 ---
@@ -209,10 +286,10 @@ Admin Flow: Monitor System → View Analytics → Manage Users → Audit Logs
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Python 3.9 or higher
-- pip (Python package manager)
-- Webcam (for face registration)
-- HTTPS connection (for geolocation API)
+- Python 3.9+
+- pip
+- Webcam
+- HTTPS or localhost (required for camera + geolocation API)
 
 ### 1. Clone the Repository
 ```bash
@@ -226,7 +303,7 @@ cd Face-Recognition-Attendance-System
 python -m venv venv
 venv\Scripts\activate
 
-# Linux/Mac
+# Linux / macOS
 python3 -m venv venv
 source venv/bin/activate
 ```
@@ -238,833 +315,392 @@ pip install -r requirements.txt
 
 ### 4. Set Up Environment Variables
 ```bash
-# Create .env file
 cp .env.example .env
-
-# Edit .env with your configuration
-# Minimum required: SECRET_KEY
+# Edit .env — minimum required: SECRET_KEY
 ```
 
-### 5. Initialize Database
+### 5. Create Admin Account
 ```bash
-# Create database and apply migrations
-flask --app manage.py db init
-flask --app manage.py db migrate -m "Initial schema"
-flask --app manage.py db upgrade
-
-# Create admin user
 python create_admin.py
 ```
 
 ### 6. Run the Application
 ```bash
-# Development mode
+# Development
 python app.py
 
-# Production mode
+# Production
 gunicorn wsgi:app
 ```
 
-### 7. Access the System
+### 7. Open Browser
 ```
 URL: http://localhost:5000
-Admin Login: admin@invertis.org / admin123
 ```
+
+> **Note:** The database (`instance/attendance.db`) and all tables are auto-created on first run via `ensure_schema_compatibility()`.
 
 ---
 
 ## 💻 Installation
 
-### Detailed Installation Steps
+### Detailed Steps
 
 #### Step 1: System Requirements
 ```bash
-# Check Python version
-python --version  # Should be 3.9 or higher
+python --version   # Must be 3.9+
 
-# Install system dependencies (Ubuntu/Debian)
-sudo apt-get update
+# Ubuntu/Debian
 sudo apt-get install python3-dev libpq-dev build-essential
 
-# For macOS
-brew install python@3.9
-
-# For Windows: Download Python from python.org
+# Windows: Download from python.org
 ```
 
-#### Step 2: Clone and Setup
+#### Step 2: Clone & Setup
 ```bash
 git clone https://github.com/rajpratham1/Face-Recognition-Attendance-System.git
 cd Face-Recognition-Attendance-System
-
-# Create virtual environment
 python -m venv venv
 
-# Activate virtual environment
 # Windows PowerShell:
 venv\Scripts\Activate.ps1
-# Windows CMD:
-venv\Scripts\activate.bat
 # Linux/Mac:
 source venv/bin/activate
 ```
 
-#### Step 3: Install Python Dependencies
+#### Step 3: Install Dependencies
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
-
-# Verify installation
-pip list | grep Flask
-# Should show: Flask==3.0.0
 ```
 
-#### Step 4: Database Setup
+#### Step 4: Configure Environment
 ```bash
-# Option A: SQLite (Default - Development)
-# No additional setup needed, database auto-created
-
-# Option B: PostgreSQL (Production)
-# 1. Install PostgreSQL
-sudo apt-get install postgresql postgresql-contrib
-
-# 2. Create database
-sudo -u postgres psql
-CREATE DATABASE attendance_db;
-CREATE USER attendance_user WITH PASSWORD 'your_password';
-GRANT ALL PRIVILEGES ON DATABASE attendance_db TO attendance_user;
-\q
-
-# 3. Set DATABASE_URL in .env
-DATABASE_URL=postgresql://attendance_user:your_password@localhost/attendance_db
-```
-
-#### Step 5: Environment Configuration
-```bash
-# Create .env file
-cat > .env << EOF
-SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
+# Minimum .env config:
+SECRET_KEY=your-random-32-char-secret-here
 FLASK_ENV=development
 APP_TIMEZONE=Asia/Kolkata
 DATABASE_URL=sqlite:///attendance.db
 SESSION_COOKIE_SECURE=0
-EOF
 ```
 
-#### Step 6: Initialize Database Schema
+#### Step 5: Create Admin
 ```bash
-# Initialize Flask-Migrate
-flask --app manage.py db init
-
-# Generate migration
-flask --app manage.py db migrate -m "Initial schema"
-
-# Apply migration
-flask --app manage.py db upgrade
-
-# Create admin user
 python create_admin.py
+# Follow prompts to set admin email + password
 ```
 
-#### Step 7: Verify Installation
+#### Step 6: Run
 ```bash
-# Run tests
-pytest tests/
-
-# Start development server
 python app.py
-
-# Open browser: http://localhost:5000
+# Server starts at http://127.0.0.1:5000
 ```
 
 ---
 
 ## ⚙️ Configuration
 
-### Environment Variables
-
-Create a `.env` file in the root directory:
+### Environment Variables (`.env`)
 
 ```bash
-# Required Configuration
-SECRET_KEY=your-secret-key-here-generate-with-secrets.token_hex
+# ── Required ────────────────────────────────────────────────
+SECRET_KEY=your-secret-key-min-32-chars
 
-# Flask Configuration
-FLASK_ENV=production  # or 'development'
-DEBUG=0               # Set to 1 only in development
+# ── Flask ───────────────────────────────────────────────────
+FLASK_ENV=production        # or development
+APP_TIMEZONE=Asia/Kolkata   # Your timezone
 
-# Database Configuration
-DATABASE_URL=sqlite:///attendance.db  # or PostgreSQL URL
+# ── Database ────────────────────────────────────────────────
+DATABASE_URL=sqlite:///attendance.db   # or PostgreSQL URL
 
-# Timezone
-APP_TIMEZONE=Asia/Kolkata  # Adjust to your timezone
+# ── Security ────────────────────────────────────────────────
+SESSION_COOKIE_SECURE=1     # Set 1 in production (HTTPS only)
 
-# Security
-SESSION_COOKIE_SECURE=1  # Set to 1 in production with HTTPS
-SESSION_COOKIE_HTTPONLY=1
-SESSION_COOKIE_SAMESITE=Lax
+# ── Email Notifications (Optional) ──────────────────────────
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=yourapp@gmail.com
+MAIL_PASSWORD=your-16-char-app-password   # Gmail App Password
+MAIL_FROM_NAME=Attendance System
 
-# Rate Limiting
-RATELIMIT_STORAGE_URI=memory://  # or redis://localhost:6379
-
-# Firebase (Optional - for cloud sync)
+# ── Firebase (Optional) ─────────────────────────────────────
 FIREBASE_PROJECT_ID=your-project-id
 FIREBASE_DATABASE_URL=https://your-project.firebaseio.com
 FIREBASE_SERVICE_ACCOUNT_PATH=path/to/serviceAccountKey.json
-
-# Firebase Web SDK Config (Optional)
-FIREBASE_API_KEY=AIzaSyXXXXXXXXXXXXXXXXXXXX
+FIREBASE_API_KEY=AIzaSy...
 FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-FIREBASE_STORAGE_BUCKET=your-project.appspot.com
-FIREBASE_MESSAGING_SENDER_ID=123456789
-FIREBASE_APP_ID=1:123456789:web:abcdef123456
 ```
 
-### Campus Location Configuration
-
-Edit `config.py` to set your university coordinates:
+### Campus Location (`config.py`)
 
 ```python
-# config.py
-class Config:
-    # Your University Coordinates
-    INVERTIS_LAT = 28.325764684367748  # Replace with your campus latitude
-    INVERTIS_LNG = 79.46097110207619   # Replace with your campus longitude
-    ALLOWED_RADIUS_METERS = 100        # Geofence radius in meters
+# Invertis University, Bareilly, UP (default)
+INVERTIS_LAT = 28.325764684367748
+INVERTIS_LNG = 79.46097110207619
+ALLOWED_RADIUS_METERS = 100   # 100-meter geofence
 ```
 
-### Face Recognition Threshold
+Change these values if deploying for a different institution.
 
-Adjust face matching sensitivity in `app.py`:
+### Face Matching Thresholds (`app.py`)
 
-```python
-# app.py - Line ~307 and ~540
-FACE_MATCH_THRESHOLD = 0.6  # Lower = stricter, Higher = lenient
-if distance < FACE_MATCH_THRESHOLD:
-    # Face matched
-```
+| Threshold | Value | Purpose |
+|---|---|---|
+| `FACE_DUPLICATE_THRESHOLD` | `0.50` | Block duplicate face registration |
+| Face attendance match | `0.60` | Face must match within this distance |
+| Spoofing alert | `0.80` | Distance > 0.8 flagged as possible photo attack |
 
 ---
 
-## 📖 Usage
+## 📖 Usage Guide
 
 ### For Students
 
-#### 1. Register Account
-1. Visit `/register`
-2. Fill in: Name, Email, Department, Password
+#### Register Account
+1. Go to `/register`
+2. Fill: Name, Email, Department, Password
 3. Select role: **Student**
-4. Accept biometric consent
-5. Click "Register"
+4. Accept biometric consent → Click **Register**
 
-#### 2. Register Face
-1. After registration, you'll be redirected to face registration
+#### Register Face
+1. Auto-redirected to `/register_face` after registration
 2. Allow camera access
-3. Wait for AI models to load
-4. Position face in the circle
-5. Click "Scan My Face"
-6. Face descriptor saved (128-D vector)
+3. Wait for "AI models loaded" message
+4. Look straight at the camera → Click **Scan My Face**
+5. App silently captures and processes your face
+6. ✅ Redirected to dashboard on success
+7. ⛔ If face already registered to another account → shown a clear error
 
-#### 3. View Dashboard
-1. Login and go to `/dashboard`
-2. See enrolled courses
-3. View live sessions
-4. Check attendance history
-
-#### 4. Mark Attendance
-1. Click "Open Session Attendance"
+#### Mark Session Attendance
+1. Go to `/mark_attendance`
 2. Allow location access
 3. Select active session from dropdown
-4. Click "Refresh" to update sessions
-5. Click "Verify and Mark Session Attendance"
-6. Look at camera for face verification
-7. Success → Redirected to dashboard
+4. Click **Verify and Mark Session Attendance**
+5. Look at camera → verified → ✅ attendance marked
+6. Both **session record** and **daily record** auto-updated
+
+#### View Dashboard
+- **My Enrolled Courses** — all courses you're in
+- **Live Classes Available** — sessions active right now
+- **My Session Attendance** — per-session history
+- **My Daily Attendance Records** — daily log + percentage
+
+---
 
 ### For Teachers
 
-#### 1. Create Course
-1. Login and go to `/dashboard`
-2. In "Create Course" section:
-   - Code: e.g., "CSE101"
-   - Title: e.g., "Data Structures"
-   - Section: e.g., "A"
-3. Click "Add"
+#### Create a Course
+1. Dashboard → "Create Course" section
+2. Enter: Code (`BCS23`), Title (`Data Structures`), Section (`A`)
+3. Click **Add**
 
-#### 2. Enroll Students
-1. In "Enroll Student by Email":
-   - Select course from dropdown
-   - Enter student email
-   - Click "Enroll"
-2. Student must be registered with role="student"
+#### Enroll Students
+1. Dashboard → "Enroll Student by Email"
+2. Select course → Enter student email → Click **Enroll**
 
-#### 3. Create Live Session
-1. In "Create Live Class Session":
-   - Select course
-   - Enter room/lab (e.g., "Lab 301")
-   - Select duration (10-45 minutes)
-   - Click "Start Session"
-2. Session becomes live immediately
-3. Students can now mark attendance
+#### Start a Live Session
+1. Dashboard → "Create Live Class Session"
+2. Select course → Enter room (e.g., `Lab 301`) → Set duration
+3. Click **Start Session** → Session goes live immediately
 
-#### 4. Monitor Attendance
-1. View "Session Attendance Panel"
-2. See live vs closed sessions
-3. Check "Marked" count per session
-4. Close session manually if needed
+#### Close a Session
+1. Find session in dashboard
+2. Click **Close Session** → students can no longer mark attendance
 
-#### 5. Close Session
-1. Find session in "Session Attendance Panel"
-2. Click "Close Session" button
-3. Students can no longer mark attendance
+---
 
 ### For Admins
 
-#### 1. View System Dashboard
 1. Login with admin credentials
-2. View all users (students, teachers, admins)
-3. See 7-day attendance trends
-4. Check today's attendance count
-
-#### 2. Print Reports
-1. On admin dashboard
-2. Click "Print Report" button
-3. Browser print dialog opens
-4. Save as PDF or print
+2. View all users with 7-day attendance grid
+3. Check today's attendance count
+4. Click **Print Report** to export as PDF
 
 ---
 
 ## 🔌 API Documentation
 
-### Authentication Endpoints
+### `POST /save_face`
+Save 128-D face descriptor after registration. Checks uniqueness across all users.
 
-#### POST `/register`
-Register new user account.
-
-**Form Data:**
+**Request:**
 ```json
 {
-  "name": "John Doe",
-  "email": "john@example.com",
-  "department": "Computer Science",
-  "password": "securepassword123",
-  "role": "student",
-  "consent": "yes"
+  "descriptor": [0.123, 0.456, ..., 0.789]  // exactly 128 floats
 }
 ```
-
-**Response:** Redirect to `/register_face`
+**Success `200`:** `{"success": true}`
+**Duplicate `409`:** `{"success": false, "message": "⚠ This face is already registered to another Student account."}`
 
 ---
 
-#### POST `/login`
-Authenticate user and create session.
+### `POST /api/session_attendance/mark`
+Mark attendance for a live class session.
 
-**Form Data:**
+**Request:**
 ```json
 {
-  "email": "john@example.com",
-  "password": "securepassword123"
+  "session_id": 1,
+  "descriptor": [0.123, ..., 0.789],
+  "lat": 28.325764,
+  "lng": 79.460971,
+  "device_id": "unique-device-string"
 }
 ```
-
-**Response:** Redirect to `/dashboard`
+**Success `200`:**
+```json
+{"success": true, "message": "Attendance marked for BCS23 (hii)."}
+```
+**Failure reasons:** `Session not found` · `Student not enrolled` · `Session inactive` · `Outside campus` · `Duplicate mark` · `No face descriptor` · `Unknown face detected`
 
 ---
 
-### Face Recognition Endpoints
-
-#### POST `/save_face`
-Save user's face descriptor after registration.
-
-**Headers:**
-```
-Content-Type: application/json
-X-CSRFToken: <token>
-```
-
-**JSON Body:**
-```json
-{
-  "descriptor": [0.1234, 0.5678, ..., 0.9012]  // 128 floats
-}
-```
-
-**Response:**
-```json
-{
-  "success": true
-}
-```
-
----
-
-### Attendance Endpoints
-
-#### GET `/api/active_sessions`
-Get list of active class sessions for current student.
-
-**Headers:**
-```
-Cookie: session=<session_cookie>
-```
+### `GET /api/active_sessions`
+Get live sessions for the current student.
 
 **Response:**
 ```json
 {
   "sessions": [
-    {
-      "id": 1,
-      "title": "Data Structures",
-      "course_code": "CSE101",
-      "room": "Lab 301",
-      "ends_at": "2026-02-19 03:45 PM"
-    }
+    {"id": 1, "title": "Data Structures", "course_code": "CSE101", "room": "Lab 301", "ends_at": "14 Apr 2026 11:30 PM"}
   ]
 }
 ```
 
 ---
 
-#### POST `/api/session_attendance/mark`
-Mark attendance for a class session.
-
-**Headers:**
+### `POST /teacher/courses/create`
 ```
-Content-Type: application/json
-X-CSRFToken: <token>
+code=CSE101 & title=Data+Structures & section=A
 ```
 
-**JSON Body:**
-```json
-{
-  "session_id": 1,
-  "descriptor": [0.1234, ..., 0.9012],  // 128 floats
-  "lat": 28.325764684367748,
-  "lng": 79.46097110207619,
-  "device_id": "unique-device-identifier"
-}
+### `POST /teacher/courses/<id>/enroll`
+```
+student_email=student@example.com
 ```
 
-**Success Response (200):**
-```json
-{
-  "success": true,
-  "message": "Attendance marked for CSE101 (Data Structures)."
-}
+### `POST /teacher/sessions/create`
+```
+course_id=1 & room=Lab+301 & duration=30
 ```
 
-**Error Response (400/403):**
-```json
-{
-  "success": false,
-  "message": "You are not enrolled for this course."
-}
-```
-
-**Error Reasons:**
-- `"Session not found"`
-- `"Student not enrolled"`
-- `"Session inactive"`
-- `"Outside campus"`
-- `"Duplicate mark"`
-- `"No face descriptor"`
-- `"Face mismatch"`
-
----
-
-### Teacher Endpoints
-
-#### POST `/teacher/courses/create`
-Create new course.
-
-**Form Data:**
-```json
-{
-  "code": "CSE101",
-  "title": "Data Structures",
-  "section": "A"
-}
-```
-
----
-
-#### POST `/teacher/courses/<course_id>/enroll`
-Enroll student in course.
-
-**Form Data:**
-```json
-{
-  "student_email": "student@example.com"
-}
-```
-
----
-
-#### POST `/teacher/sessions/create`
-Create live class session.
-
-**Form Data:**
-```json
-{
-  "course_id": 1,
-  "room": "Lab 301",
-  "duration": 30  // minutes
-}
-```
-
----
-
-#### POST `/teacher/sessions/<session_id>/close`
-Close active session.
-
-**Response:** Redirect to `/dashboard`
+### `POST /teacher/sessions/<id>/close`
+Closes an active session.
 
 ---
 
 ## 🔒 Security
 
-### Security Measures Implemented
+### All Protections at a Glance
 
-#### 1. **CSRF Protection**
-- All forms protected with Flask-WTF CSRF tokens
-- Token validation on every POST request
-- Auto-refresh on token expiry
+| Layer | Implementation |
+|---|---|
+| CSRF | `Flask-WTF` token on every form + AJAX header |
+| Rate Limiting | Per-route limits via `Flask-Limiter` |
+| Authentication | `Flask-Login` session management |
+| Password Hashing | `werkzeug` scrypt |
+| Face Duplicates | Euclidean distance < 0.50 → block |
+| Geofencing | `geopy.geodesic` < 100m |
+| Audit Trail | `AttendanceAttempt` table logs every attempt |
+| Session Cookies | HTTPOnly + SameSite=Lax + Secure (prod) |
+| Device Tracking | SHA-256 device fingerprint per record |
 
-#### 2. **Rate Limiting**
-```python
-Login: 5 requests per minute
-Registration: 20 requests per hour
-Face Save: 30 requests per hour
-Mark Attendance: 10 requests per minute
-```
-
-#### 3. **Geofencing**
-- Location verification using geopy
-- 100-meter radius from campus center
-- Rejects attendance outside boundary
-
-#### 4. **Face Verification**
-- Euclidean distance threshold: 0.6
-- Multi-face detection prevention
-- Client-side processing (privacy)
-
-#### 5. **Device Fingerprinting**
-- Unique device ID stored in localStorage
-- SHA-256 hashing of device identifier
-- Tracks attendance from multiple devices
-
-#### 6. **Audit Logging**
-- All attendance attempts logged
-- Tracks: success/failure, reason, location, face distance
-- IP address and user agent recording
-
-#### 7. **Session Security**
-- HTTPOnly cookies prevent XSS
-- SameSite=Lax prevents CSRF
-- Secure flag in production (HTTPS)
-
-#### 8. **Password Security**
-- Scrypt hashing (more secure than bcrypt)
-- No plaintext storage
-- Password minimum length enforced
-
-### Privacy Considerations
-
-✅ **What We Store:**
-- Face descriptors (128 floats - mathematical representation)
-- Location coordinates (latitude/longitude)
-- Device hash (SHA-256)
-- IP address (for audit)
-
-❌ **What We DON'T Store:**
-- Face images or videos
-- Raw device information
-- Biometric templates (only descriptors)
-
-### Security Best Practices for Deployment
-
-1. **Always use HTTPS in production**
-2. **Set strong SECRET_KEY** (32+ characters)
-3. **Enable SESSION_COOKIE_SECURE=1**
-4. **Use PostgreSQL with SSL** (not SQLite)
-5. **Set up firewall** (only ports 80/443 open)
-6. **Regular backups** (use `scripts/backup_db.py`)
-7. **Monitor logs** (check AttendanceAttempt table)
-8. **Update dependencies** regularly
-
----
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these guidelines:
-
-### Development Workflow
-
-1. **Fork the repository**
-2. **Create feature branch**
-   ```bash
-   git checkout -b feature/your-feature-name
-   ```
-3. **Make changes**
-   - Follow PEP 8 style guide
-   - Add docstrings to functions
-   - Write unit tests
-4. **Test changes**
-   ```bash
-   pytest tests/
-   ```
-5. **Commit changes**
-   ```bash
-   git commit -m "Add: Description of your changes"
-   ```
-6. **Push to branch**
-   ```bash
-   git push origin feature/your-feature-name
-   ```
-7. **Create Pull Request**
-
-### Coding Standards
-
-#### Python
-- Use type hints: `def func(param: int) -> str:`
-- Follow PEP 8 naming conventions
-- Add docstrings for all functions
-- Use SQLAlchemy ORM (no raw SQL)
-
-#### JavaScript
-- Use ES6+ syntax (const/let, arrow functions)
-- Add JSDoc comments for functions
-- Use async/await for asynchronous operations
-
-#### Git Commit Messages
-```
-Add: New feature implementation
-Fix: Bug fix description
-Update: Changes to existing feature
-Refactor: Code refactoring
-Docs: Documentation updates
-Test: Test additions or modifications
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
-
----
-
-## 🧪 Testing
-
-### Running Tests
-
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=app --cov-report=html
-
-# Run specific test file
-pytest tests/test_basic.py
-
-# Run with verbose output
-pytest -v
-```
-
-### Test Structure
-
-```
-tests/
-├── test_basic.py           # Basic app tests
-├── test_auth.py            # Authentication tests
-├── test_attendance.py      # Attendance logic tests
-├── test_api.py             # API endpoint tests
-└── test_security.py        # Security tests
-```
-
-### Writing Tests
-
-Example test:
-```python
-def test_mark_attendance_success(client, auth_student):
-    """Test successful attendance marking"""
-    # Setup
-    session = create_test_session()
-    
-    # Execute
-    response = client.post('/api/session_attendance/mark', json={
-        'session_id': session.id,
-        'descriptor': [0.1] * 128,
-        'lat': 28.325764684367748,
-        'lng': 79.46097110207619
-    })
-    
-    # Assert
-    assert response.status_code == 200
-    assert response.json['success'] == True
-```
+### Privacy
+- ✅ Stores: 128-float math descriptor, location, device hash, IP
+- ❌ Does NOT store: face images, videos, raw biometric data
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+| Problem | Solution |
+|---|---|
+| Camera not working | Use HTTPS (required by browser security) or `localhost` |
+| Face models not loading | Check internet · clear cache · models load from CDN |
+| Location denied | Enable location in browser settings · use HTTPS |
+| "Outside campus" error | Update `INVERTIS_LAT/LNG` in `config.py` · increase radius |
+| Face registration blocked (409) | Same person already has an account — use existing login |
+| Daily attendance shows 0 | Restart server — backfill runs automatically on startup |
+| Firebase sync failing | Check `FIREBASE_DATABASE_URL` in `.env` · system works without it |
+| Face verification always fails | Re-register face in good lighting · adjust threshold to `0.65` |
 
-#### Issue: Camera not working
-**Solution:**
-- Ensure HTTPS connection (required for camera API)
-- Check browser permissions (allow camera access)
-- Try different browser (Chrome/Firefox recommended)
-
-#### Issue: Face models not loading
-**Solution:**
-- Check internet connection (models loaded from CDN)
-- Clear browser cache
-- Host models locally in `/static/models/`
-
-#### Issue: Location access denied
-**Solution:**
-- Enable location services in browser
-- Check device location settings
-- Use HTTPS (required for geolocation API)
-
-#### Issue: "Outside campus" error even when on campus
-**Solution:**
-- Update campus coordinates in `config.py`
-- Increase `ALLOWED_RADIUS_METERS`
-- Check GPS accuracy on device
-
-#### Issue: Database migration errors
-**Solution:**
-```bash
-# Reset migrations
-rm -rf migrations/
-flask --app manage.py db init
-flask --app manage.py db migrate -m "Initial schema"
-flask --app manage.py db upgrade
-```
-
-#### Issue: Firebase sync not working
-**Solution:**
-- Verify `FIREBASE_DATABASE_URL` in `.env`
-- Check service account JSON file path
-- Ensure Firebase Realtime Database is enabled
-- System works without Firebase (optional feature)
-
-#### Issue: Face verification always fails
-**Solution:**
-- Re-register face in good lighting
-- Ensure single face in frame
-- Adjust `FACE_MATCH_THRESHOLD` (increase to 0.7)
-- Check console for face distance values
-
-### Debug Mode
-
-Enable debug mode for detailed errors:
-
+### Enable Debug Mode
 ```bash
 # .env
 FLASK_ENV=development
-DEBUG=1
 
-# Run with debug
+# Run
 python app.py
-```
-
-### Logs
-
-Check logs for errors:
-```bash
-# Application logs
-tail -f app.log
-
-# Database queries
-# Set in config.py:
-SQLALCHEMY_ECHO = True
 ```
 
 ---
 
-## 📊 Performance Optimization
+## 🤝 Contributing
 
-### Database Optimization
-- Use indexes on foreign keys (already implemented)
-- Implement pagination for large datasets
-- Use connection pooling in production
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/your-feature`
+3. Follow PEP 8 (Python) and ES6+ (JavaScript)
+4. Write tests in `tests/`
+5. Commit: `git commit -m "feat: description"`
+6. Push: `git push origin feature/your-feature`
+7. Open a Pull Request
 
-### Face Recognition Optimization
-- Use `detectSingleFace()` instead of `detectAllFaces()`
-- Cache face descriptors after registration
-- Implement throttling for real-time detection
+See [CONTRIBUTING.md](CONTRIBUTING.md) for full guidelines.
 
-### Caching
-```python
-# Add Flask-Caching
-from flask_caching import Cache
-cache = Cache(app, config={'CACHE_TYPE': 'simple'})
+---
 
-@cache.cached(timeout=300)
-@app.route('/dashboard')
-def dashboard():
-    # Expensive operations cached for 5 minutes
-    pass
+## 🧪 Testing
+
+```bash
+# Run all tests
+pytest tests/
+
+# With coverage report
+pytest --cov=app --cov-report=html
+
+# Specific file
+pytest tests/test_auth.py -v
 ```
+
+---
+
+## 📊 Performance Tips
+
+- Use PostgreSQL (not SQLite) in production for concurrent access
+- Host face-api.js model weights locally in `static/models/` to avoid CDN dependency
+- Use Redis for `RATELIMIT_STORAGE_URI` instead of `memory://` in multi-worker setups
 
 ---
 
 ## 📄 License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
-```
-MIT License
-
-Copyright (c) 2026 IIOT Group Project Team
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
+This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
 
 ---
 
 ## 👥 Authors & Contributors
 
-- **IIOT Group Project Team** - *Initial work* - [GitHub](https://github.com/rajpratham1)
-
-See also the list of [contributors](https://github.com/rajpratham1/Face-Recognition-Attendance-System/contributors) who participated in this project.
+- **Pratham Raj** — [GitHub @rajpratham1](https://github.com/rajpratham1)
 
 ---
 
 ## 🙏 Acknowledgments
 
-- **Invertis University** for project support
-- **face-api.js** team for the amazing face recognition library
-- **Flask** community for excellent documentation
-- **Bootstrap** team for the UI framework
+- **Invertis University, Bareilly** — for project support
+- **[face-api.js](https://github.com/justadudewhohacks/face-api.js)** — browser face recognition library
+- **Flask** community — excellent framework and documentation
+- **Bootstrap** team — responsive UI components
 
 ---
 
 ## 📞 Contact & Support
 
-- **Email**: support@invertis.org
+- **Email**: rajpratham40@gmail.com
 - **Issues**: [GitHub Issues](https://github.com/rajpratham1/Face-Recognition-Attendance-System/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/rajpratham1/Face-Recognition-Attendance-System/discussions)
 
 ---
 
-
 **⭐ If you find this project useful, please give it a star on GitHub!**
 
-**Made with ❤️ by IIOT Group Project Team**
+**Made with ❤️ by Pratham Raj**

@@ -53,8 +53,6 @@
             {% if teacher_courses %}
             <form method="POST" action="{{ url_for('create_session') }}" class="row g-2">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <input type="hidden" name="lat" id="session-lat" value="">
-                <input type="hidden" name="lng" id="session-lng" value="">
                 <div class="col-md-5">
                     <select class="form-select" name="course_id" required>
                         {% for course in teacher_courses %}
@@ -150,24 +148,6 @@
         enrollCourse.addEventListener('change', () => {
             enrollForm.action = `/teacher/courses/${enrollCourse.value}/enroll`;
         });
-    }
-
-    // Geofencing for class creation
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const latInput = document.getElementById('session-lat');
-                const lngInput = document.getElementById('session-lng');
-                if (latInput && lngInput) {
-                    latInput.value = position.coords.latitude;
-                    lngInput.value = position.coords.longitude;
-                }
-            },
-            (error) => {
-                console.warn('Geolocation failed or denied by teacher:', error.message);
-            },
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
     }
 </script>
 {% endblock %}

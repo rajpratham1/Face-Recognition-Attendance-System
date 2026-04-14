@@ -494,11 +494,17 @@ def create_session():
     course_id_raw = request.form.get("course_id", "").strip()
     room = request.form.get("room", "").strip()
     duration_raw = request.form.get("duration", "15").strip()
+    lat = request.form.get("lat")
+    lng = request.form.get("lng")
 
     try:
         course_id = int(course_id_raw)
     except ValueError:
         flash("Invalid course selected.", "warning")
+        return redirect(url_for("dashboard"))
+        
+    if not is_within_invertis(lat, lng):
+        flash("Classes can only be created from within the Invertis University campus.", "danger")
         return redirect(url_for("dashboard"))
 
     course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first()

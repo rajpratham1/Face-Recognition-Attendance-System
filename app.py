@@ -113,9 +113,19 @@ def today_local_date():
 def is_within_invertis(lat, lng):
     if lat is None or lng is None:
         return False
+    try:
+        lat = float(lat)
+        lng = float(lng)
+    except (ValueError, TypeError):
+        return False
+        
     user_location = (lat, lng)
     invertis_location = (app.config["INVERTIS_LAT"], app.config["INVERTIS_LNG"])
     distance = geodesic(user_location, invertis_location).meters
+    
+    # ── LOGGING DISTANCE FOR DEBUGGING ──
+    app.logger.info(f"Geofence Check: User Location {user_location} -> Distance to campus: {distance:.2f} meters")
+    
     return distance <= app.config["ALLOWED_RADIUS_METERS"]
 
 
@@ -209,7 +219,24 @@ def ensure_schema_compatibility():
             conn.execute(text("ALTER TABLE session_attendance ADD COLUMN ip_address VARCHAR(64)"))
         if "user_agent" not in session_attendance_columns:
             conn.execute(text("ALTER TABLE session_attendance ADD COLUMN user_agent VARCHAR(255)"))
+            
+        users_columns = _columns(conn, "users")
+        if "college_id" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN college_id VARCHAR(50)"))
+        if "section" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN section VARCHAR(10)"))
+        if "year" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN year VARCHAR(10)"))
+        if "semester" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN semester VARCHAR(10)"))
 
+
+@app.after_request
+def add_header(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '-1'
+    return response
 
 @app.route("/")
 def index():
@@ -223,6 +250,10 @@ def register():
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
         department = request.form.get("department", "").strip()
+        college_id = request.form.get("college_id", "").strip()
+        section = request.form.get("section", "").strip()
+        year = request.form.get("year", "").strip()
+        semester = request.form.get("semester", "").strip()
         password = request.form.get("password", "")
         role = request.form.get("role", "student")
         consent = request.form.get("consent") == "yes"
@@ -236,11 +267,19 @@ def register():
         if User.query.filter_by(email=email).first():
             flash("Email already registered", "danger")
             return redirect(url_for("register"))
+            
+        if role == "student" and not (college_id and section and year and semester):
+            flash("Students must provide College ID, Section, Year, and Semester.", "warning")
+            return redirect(url_for("register"))
 
         new_user = User(
             name=name,
             email=email,
             department=department,
+            college_id=college_id if role == "student" else None,
+            section=section if role == "student" else None,
+            year=year if role == "student" else None,
+            semester=semester if role == "student" else None,
             role=role,
             password_hash=generate_password_hash(password, method="scrypt"),
         )
@@ -826,9 +865,10 @@ def dashboard():
     enrolled_course_ids = [e.course_id for e in Enrollment.query.filter_by(student_id=current_user.id).all()]
     total_sessions_held = 0
     if enrolled_course_ids:
+        # Count all sessions that have already started
         total_sessions_held = ClassSession.query.filter(
             ClassSession.course_id.in_(enrolled_course_ids),
-            ClassSession.is_active.is_(False),   # only completed sessions
+            ClassSession.starts_at <= now_utc_naive()
         ).count()
 
     # Use session attendance for percentage (more accurate than daily record)
@@ -836,7 +876,9 @@ def dashboard():
 
     attendance_percentage = 0
     if total_sessions_held > 0:
-        attendance_percentage = round((sessions_attended / total_sessions_held) * 100, 1)
+        # Prevent percentage from exceeding 100% just in case
+        clamped_attended = min(sessions_attended, total_sessions_held)
+        attendance_percentage = round((clamped_attended / total_sessions_held) * 100, 1)
     elif present_days > 0:
         attendance_percentage = 100.0  # fallback: all days present
 

@@ -1,19 +1,37 @@
 {
   "rules": {
     "courses": {
-      ".indexOn": ["teacherId", "code", "section"]
+      ".indexOn": [
+        "teacherId",
+        "code",
+        "section"
+      ]
     },
     "sessions": {
-      ".indexOn": ["courseId", "teacherId", "startsAt", "endsAt", "isActive"]
+      ".indexOn": [
+        "courseId",
+        "teacherId",
+        "startsAt",
+        "endsAt",
+        "isActive"
+      ]
     },
     "attendance": {
       "$studentId": {
-        ".indexOn": ["sessionId", "markedAt"]
+        ".indexOn": [
+          "sessionId",
+          "markedAt"
+        ]
       }
     },
     "attendance_attempts": {
       "$date": {
-        ".indexOn": ["studentId", "sessionId", "success", "createdAt"]
+        ".indexOn": [
+          "studentId",
+          "sessionId",
+          "success",
+          "createdAt"
+        ]
       }
     }
   }

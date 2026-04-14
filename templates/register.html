@@ -33,6 +33,47 @@
                     </select>
                 </div>
 
+                <div id="student-extra-fields">
+                    <div class="mb-3">
+                        <label class="form-label">College ID</label>
+                        <input type="text" name="college_id" class="form-control" placeholder="E.g., BCS2021001">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Section</label>
+                        <input type="text" name="section" class="form-control" placeholder="E.g., A">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Year</label>
+                        <select name="year" class="form-select">
+                            <option value="">Select Year</option>
+                            <option value="1">1st Year</option>
+                            <option value="2">2nd Year</option>
+                            <option value="3">3rd Year</option>
+                            <option value="4">4th Year</option>
+                            <option value="5">5th Year</option>
+                        </select>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Semester</label>
+                        <select name="semester" class="form-select">
+                            <option value="">Select Semester</option>
+                            <option value="1">1st Sem</option>
+                            <option value="2">2nd Sem</option>
+                            <option value="3">3rd Sem</option>
+                            <option value="4">4th Sem</option>
+                            <option value="5">5th Sem</option>
+                            <option value="6">6th Sem</option>
+                            <option value="7">7th Sem</option>
+                            <option value="8">8th Sem</option>
+                            <option value="9">9th Sem</option>
+                            <option value="10">10th Sem</option>
+                        </select>
+                    </div>
+                </div>
+
                 <div class="mb-3">
                     <label class="form-label">Email</label>
                     <input type="email" name="email" class="form-control" required placeholder="name@domain.com">
@@ -55,4 +96,25 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const roleSelect = document.querySelector('select[name="role"]');
+    const studentFieldsWrap = document.getElementById('student-extra-fields');
+    const studentInputs = studentFieldsWrap.querySelectorAll('input, select');
+
+    function toggleStudentFields() {
+        if (roleSelect.value === 'student') {
+            studentFieldsWrap.style.display = 'block';
+            studentInputs.forEach(input => input.setAttribute('required', 'required'));
+        } else {
+            studentFieldsWrap.style.display = 'none';
+            studentInputs.forEach(input => input.removeAttribute('required'));
+        }
+    }
+
+    roleSelect.addEventListener('change', toggleStudentFields);
+    toggleStudentFields(); // Initialize on load
+});
+</script>
 {% endblock %}

@@ -14,6 +14,10 @@ class User(UserMixin, db.Model):
     department = db.Column(db.String(100), nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), default='student')  # student / teacher / admin
+    college_id = db.Column(db.String(50), nullable=True)
+    section = db.Column(db.String(10), nullable=True)
+    year = db.Column(db.String(10), nullable=True)
+    semester = db.Column(db.String(10), nullable=True)
     face_encoding = db.Column(db.Text, nullable=True)   # JSON of 128-D vector
     face_registered = db.Column(db.Boolean, default=False)
     registered_at = db.Column(db.DateTime, default=datetime.utcnow)

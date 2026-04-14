@@ -264,6 +264,7 @@ def register_face():
 @limiter.limit("30 per hour")
 # This function saves user's face encoding after registration
 # Face data is stored as a 128-dimension vector
+# It also checks for duplicate faces across ALL users (any role)
 def save_face():
     data = request.json or {}
     descriptor = data.get("descriptor")
@@ -282,6 +283,38 @@ def save_face():
 
     if any(not isfinite(v) for v in normalized_descriptor):
         return jsonify({"success": False, "message": "Face data contains invalid values."}), 400
+
+    # ── Duplicate face check across ALL existing users ─────────────────────────
+    # Compare new face against every registered face in DB (any role).
+    # This prevents one person from creating multiple accounts (student/teacher).
+    new_vec = np.array(normalized_descriptor)
+    FACE_DUPLICATE_THRESHOLD = 0.50  # strict: same person triggers below this
+    existing_users = User.query.filter(
+        User.face_registered.is_(True),
+        User.face_encoding.isnot(None),
+        User.id != current_user.id,           # allow re-registering own face
+    ).all()
+
+    for other in existing_users:
+        try:
+            other_vec = np.array(json.loads(other.face_encoding))
+            distance = float(np.linalg.norm(new_vec - other_vec))
+            if distance < FACE_DUPLICATE_THRESHOLD:
+                app.logger.warning(
+                    "Duplicate face attempt: user_id=%s vs existing user_id=%s (distance=%.4f)",
+                    current_user.id, other.id, distance,
+                )
+                role_label = other.role.capitalize()
+                return jsonify({
+                    "success": False,
+                    "message": (
+                        f"⚠ This face is already registered to another {role_label} account. "
+                        "Each person can only have one account across all roles."
+                    ),
+                }), 409
+        except Exception:
+            continue  # skip corrupted encoding gracefully
+    # ──────────────────────────────────────────────────────────────────────────
 
     try:
         current_user.face_encoding = json.dumps(normalized_descriptor)
@@ -616,6 +649,25 @@ def mark_session_attendance():
 
     db.session.add(entry)
 
+    # ── Also update the Daily Attendance record ───────────────────────────
+    # So "My Daily Attendance Records" on the student dashboard reflects this session.
+    local_now = now_local()
+    today_date = local_now.date()
+    daily_exists = Attendance.query.filter_by(
+        user_id=current_user.id,
+        date=today_date,
+    ).first()
+    if not daily_exists:
+        daily_entry = Attendance(
+            user_id=current_user.id,
+            date=today_date,
+            time=local_now.time().replace(microsecond=0),
+            latitude=lat,
+            longitude=lng,
+        )
+        db.session.add(daily_entry)
+    # ─────────────────────────────────────────────────────────────────────
+
     record_attempt(
         session.id,
         current_user.id,
@@ -768,12 +820,25 @@ def dashboard():
     # STUDENT DASHBOARD
     my_attendance = Attendance.query.filter_by(user_id=current_user.id).order_by(Attendance.date.desc()).all()
 
-    total_days = len(my_attendance)
-    present_days = total_days
+    present_days = len(my_attendance)
+
+    # Total class sessions the student was eligible to attend
+    enrolled_course_ids = [e.course_id for e in Enrollment.query.filter_by(student_id=current_user.id).all()]
+    total_sessions_held = 0
+    if enrolled_course_ids:
+        total_sessions_held = ClassSession.query.filter(
+            ClassSession.course_id.in_(enrolled_course_ids),
+            ClassSession.is_active.is_(False),   # only completed sessions
+        ).count()
+
+    # Use session attendance for percentage (more accurate than daily record)
+    sessions_attended = SessionAttendance.query.filter_by(student_id=current_user.id).count()
 
     attendance_percentage = 0
-    if total_days > 0:
-        attendance_percentage = round((present_days / total_days) * 100, 2)
+    if total_sessions_held > 0:
+        attendance_percentage = round((sessions_attended / total_sessions_held) * 100, 1)
+    elif present_days > 0:
+        attendance_percentage = 100.0  # fallback: all days present
 
     active_sessions = student_active_sessions(current_user.id)
 
@@ -801,6 +866,40 @@ def dashboard():
     )
 with app.app_context():
     ensure_schema_compatibility()
+
+    # ── Backfill daily Attendance from existing SessionAttendance records ──
+    # Fixes missing daily records for sessions marked before this logic was added.
+    try:
+        all_session_att = SessionAttendance.query.all()
+        backfill_count = 0
+        for sa in all_session_att:
+            sess = db.session.get(ClassSession, sa.session_id)
+            if not sess:
+                continue
+            from zoneinfo import ZoneInfo as _ZI
+            local_marked = sa.marked_at
+            if local_marked.tzinfo is None:
+                local_marked = local_marked.replace(tzinfo=timezone.utc)
+            local_marked = local_marked.astimezone(_ZI(app.config["APP_TIMEZONE"]))
+            record_date = local_marked.date()
+            exists = Attendance.query.filter_by(user_id=sa.student_id, date=record_date).first()
+            if not exists:
+                daily = Attendance(
+                    user_id=sa.student_id,
+                    date=record_date,
+                    time=local_marked.time().replace(microsecond=0),
+                    latitude=sa.latitude,
+                    longitude=sa.longitude,
+                )
+                db.session.add(daily)
+                backfill_count += 1
+        if backfill_count:
+            db.session.commit()
+            app.logger.info("Backfilled %d daily attendance records from session attendance.", backfill_count)
+    except Exception:
+        db.session.rollback()
+        app.logger.exception("Backfill of daily attendance records failed (non-critical).")
+    # ─────────────────────────────────────────────────────────────────────
 
 
 if __name__ == "__main__":

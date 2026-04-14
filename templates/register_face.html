@@ -1,136 +1,242 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+  .face-card {
+    max-width: 500px;
+    margin: 0 auto;
+  }
+
+  .camera-wrap {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #0a0a14;
+    border: 2px solid rgba(99, 102, 241, 0.35);
+    box-shadow: 0 0 32px rgba(99, 102, 241, 0.18);
+  }
+
+  #video-preview {
+    width: 100%;
+    display: block;
+    border-radius: 14px;
+  }
+
+  .scan-ring {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 190px;
+    height: 190px;
+    border: 3px dashed rgba(99, 102, 241, 0.6);
+    border-radius: 50%;
+    pointer-events: none;
+    animation: ring-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes ring-pulse {
+
+    0%,
+    100% {
+      border-color: rgba(99, 102, 241, 0.4);
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    50% {
+      border-color: rgba(139, 92, 246, 0.9);
+      transform: translate(-50%, -50%) scale(1.05);
+    }
+  }
+
+  #status-text {
+    font-size: 0.95rem;
+    min-height: 1.4em;
+    transition: color 0.3s;
+  }
+
+  #capture-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .alert-dup {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: #fca5a5;
+    font-size: 0.9rem;
+    display: none;
+  }
+</style>
+
 <div class="row justify-content-center">
-    <div class="col-md-6 text-center">
-        <div class="glass-card">
-            <h2 class="mb-4">Register Face ID</h2>
-            <p class="text-muted">Phase 1: Identity Registration. Look straight into the camera.</p>
+  <div class="col-md-7 face-card">
+    <div class="glass-card">
+      <h2 class="mb-1 text-center">Register Face ID</h2>
+      <p class="text-muted text-center mb-4" style="font-size:.9rem;">
+        Look straight into the camera and press <strong>Scan My Face</strong>.
+      </p>
 
-            <div class="camera-container mb-4">
-                <video id="video-preview" autoplay muted playsinline></video>
-                <div class="scan-overlay"></div>
-                <div id="status-text" class="mt-2 font-weight-bold text-primary"></div>
-            </div>
+      <div class="camera-wrap mb-3">
+        <video id="video-preview" autoplay muted playsinline></video>
+        <div class="scan-ring"></div>
+      </div>
 
-            <button id="capture-btn" class="btn btn-custom btn-lg w-100 mb-3" disabled>
-                Scan My Face
-            </button>
-            <p class="small text-muted">Position your face within the circle</p>
-        </div>
+      <div id="status-text" class="text-center text-primary mb-3">Initialising camera…</div>
+
+      <!-- Duplicate-face error banner -->
+      <div class="alert-dup" id="dup-alert"></div>
+
+      <button id="capture-btn" class="btn btn-custom btn-lg w-100 mb-2" disabled>
+        📷 Scan My Face
+      </button>
+      <p class="text-muted text-center" style="font-size:.8rem;">
+        Position your face within the circle and keep still.
+      </p>
     </div>
+  </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
 <script>
-    const video = document.getElementById('video-preview');
-    const captureBtn = document.getElementById('capture-btn');
-    const statusText = document.getElementById('status-text');
-    const csrfToken = window.getCsrfToken();
-    const MODEL_URLS = [
-        'https://justadudewhohacks.github.io/face-api.js/models',
-        'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'
-    ];
-    let streamReady = false;
-    let modelReady = false;
+  const video = document.getElementById('video-preview');
+  const captureBtn = document.getElementById('capture-btn');
+  const statusText = document.getElementById('status-text');
+  const dupAlert = document.getElementById('dup-alert');
+  const csrfToken = window.getCsrfToken();
 
-    function updateCaptureState() {
-        captureBtn.disabled = !(streamReady && modelReady);
-    }
+  const MODEL_URLS = [
+    'https://justadudewhohacks.github.io/face-api.js/models',
+    'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights'
+  ];
 
-    async function loadModels() {
-        statusText.innerText = "Loading AI models...";
-        let lastError = null;
+  // Internal constants — not shown to user
+  const TOTAL_SAMPLES = 5;
+  const SAMPLE_DELAY = 500;  // ms between internal captures
 
-        for (const modelUrl of MODEL_URLS) {
-            try {
-                await faceapi.nets.ssdMobilenetv1.loadFromUri(modelUrl);
-                await faceapi.nets.faceLandmark68Net.loadFromUri(modelUrl);
-                await faceapi.nets.faceRecognitionNet.loadFromUri(modelUrl);
-                modelReady = true;
-                statusText.innerText = "AI models loaded. Ready to scan.";
-                updateCaptureState();
-                return;
-            } catch (error) {
-                lastError = error;
-            }
-        }
+  let streamReady = false;
+  let modelReady = false;
+  let scanning = false;
 
-        console.error("Model load failure:", lastError);
-        statusText.innerText = "Model load failed. Refresh and try again.";
-        statusText.className = "mt-2 font-weight-bold text-danger";
-        modelReady = false;
+  function setStatus(msg, cls = 'text-primary') {
+    statusText.innerText = msg;
+    statusText.className = `text-center mb-3 font-weight-bold ${cls}`;
+  }
+
+  function updateCaptureState() {
+    captureBtn.disabled = !(streamReady && modelReady && !scanning);
+  }
+
+  async function loadModels() {
+    setStatus('Loading AI models…');
+    let lastError = null;
+    for (const url of MODEL_URLS) {
+      try {
+        await faceapi.nets.ssdMobilenetv1.loadFromUri(url);
+        await faceapi.nets.faceLandmark68Net.loadFromUri(url);
+        await faceapi.nets.faceRecognitionNet.loadFromUri(url);
+        modelReady = true;
+        setStatus('AI models loaded. Ready to scan.', 'text-success');
         updateCaptureState();
+        return;
+      } catch (e) { lastError = e; }
+    }
+    console.error('Model load failure:', lastError);
+    setStatus('AI model failed to load. Refresh and try again.', 'text-danger');
+  }
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    setStatus('Camera API not available in this browser.', 'text-danger');
+  } else {
+    navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } })
+      .then(stream => {
+        video.srcObject = stream;
+        streamReady = true;
+        loadModels();
+      })
+      .catch(err => {
+        console.error('Camera error:', err);
+        setStatus('Camera access denied. Allow camera and reload.', 'text-danger');
+      });
+  }
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  captureBtn.addEventListener('click', async () => {
+    if (!streamReady || !modelReady || scanning) return;
+
+    scanning = true;
+    captureBtn.disabled = true;
+    dupAlert.style.display = 'none';
+    setStatus('Scanning Face…');
+
+    // ── collect TOTAL_SAMPLES descriptors silently ───────────────────────
+    const descriptors = [];
+    for (let i = 0; i < TOTAL_SAMPLES; i++) {
+      let det = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        det = await faceapi.detectSingleFace(video)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+        if (det) break;
+        await sleep(300);
+      }
+      if (!det) {
+        setStatus('No face detected. Please adjust lighting and try again.', 'text-warning');
+        scanning = false;
+        updateCaptureState();
+        return;
+      }
+      descriptors.push(Array.from(det.descriptor));
+      if (i < TOTAL_SAMPLES - 1) await sleep(SAMPLE_DELAY);
     }
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        statusText.innerText = "Camera API not available in this browser.";
-        statusText.className = "mt-2 font-weight-bold text-danger";
-    } else {
-        navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-            video.srcObject = stream;
-            streamReady = true;
-            updateCaptureState();
-            loadModels();
-        })
-        .catch(err => {
-            console.error("Camera error:", err);
-            statusText.innerText = "Camera access denied. Allow camera and reload.";
-            statusText.className = "mt-2 font-weight-bold text-danger";
-            streamReady = false;
-            updateCaptureState();
-        });
+    // ── average descriptors into one robust vector ───────────────────────
+    const avg = new Array(128).fill(0);
+    for (const d of descriptors) {
+      for (let k = 0; k < 128; k++) avg[k] += d[k] / TOTAL_SAMPLES;
     }
 
-    captureBtn.addEventListener('click', async () => {
-        if (!streamReady || !modelReady) {
-            return;
-        }
-        statusText.innerText = "Scanning Face...";
-        captureBtn.disabled = true;
+    setStatus('Processing…');
 
-        const detections = await faceapi.detectSingleFace(video)
-            .withFaceLandmarks()
-            .withFaceDescriptor();
+    // ── send to server ───────────────────────────────────────────────────
+    try {
+      const response = await fetch('/save_face', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken,
+          'X-Requested-With': 'XMLHttpRequest'
+        },
+        body: JSON.stringify({ descriptor: avg })
+      });
 
-        if (!detections) {
-            statusText.innerText = "No face detected. Please adjust lighting.";
-            captureBtn.disabled = false;
-            return;
-        }
+      let result;
+      try { result = await response.json(); }
+      catch { result = { success: false, message: 'Unexpected server response.' }; }
 
-        const descriptor = Array.from(detections.descriptor);
-
-        try {
-            const response = await fetch('/save_face', {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                body: JSON.stringify({ descriptor: descriptor })
-            });
-            const result = await response.json().catch(() => ({
-                success: false,
-                message: "Unexpected server response."
-            }));
-
-            if (result.success) {
-                statusText.innerText = "Face Registered Successfully!";
-                statusText.className = "mt-2 font-weight-bold text-success";
-                setTimeout(() => window.location.href = '/dashboard', 1500);
-            } else {
-                statusText.innerText = result.message || "Face registration failed.";
-                statusText.className = "mt-2 font-weight-bold text-danger";
-                captureBtn.disabled = false;
-            }
-        } catch (error) {
-            statusText.innerText = "Upload error. Try again.";
-            captureBtn.disabled = false;
-        }
-    });
+      if (result.success) {
+        setStatus('✅ Face Registered Successfully!', 'text-success');
+        setTimeout(() => window.location.href = '/dashboard', 1500);
+      } else if (response.status === 409) {
+        dupAlert.innerHTML = `<strong>🚫 Registration Blocked</strong><br>${result.message || 'This face is already linked to an existing account.'}`;
+        dupAlert.style.display = 'block';
+        setStatus('Face registration blocked.', 'text-danger');
+        scanning = false;
+        updateCaptureState();
+      } else {
+        setStatus(result.message || 'Face registration failed. Try again.', 'text-danger');
+        scanning = false;
+        updateCaptureState();
+      }
+    } catch (err) {
+      setStatus('Network error. Check connection and try again.', 'text-danger');
+      scanning = false;
+      updateCaptureState();
+    }
+  });
 </script>
 {% endblock %}

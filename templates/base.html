@@ -86,8 +86,9 @@
             const INVERTIS_LAT = {{ APP_INVERTIS_LAT | default('null') | tojson }};
             const INVERTIS_LNG = {{ APP_INVERTIS_LNG | default('null') | tojson }};
             const ALLOWED_RADIUS = {{ APP_ALLOWED_RADIUS | default('100') | tojson }};
+            const GEOFENCE_ENFORCED = {{ APP_GEOFENCE_ENFORCED | default(true) | tojson }};
             
-            if (INVERTIS_LAT === null || INVERTIS_LNG === null || INVERTIS_LAT === "null") return;
+            if (!GEOFENCE_ENFORCED || INVERTIS_LAT === null || INVERTIS_LNG === null || INVERTIS_LAT === "null") return;
 
             const blocker = document.getElementById('geofence-blocker');
             const debugText = document.getElementById('geofence-debug');

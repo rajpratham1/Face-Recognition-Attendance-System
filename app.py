@@ -111,6 +111,8 @@ def today_local_date():
 
 
 def is_within_invertis(lat, lng):
+    if not app.config.get("GEOFENCE_ENFORCED", True):
+        return True
     if lat is None or lng is None:
         return False
     try:
@@ -243,7 +245,8 @@ def inject_geo_vars():
     return {
         "APP_INVERTIS_LAT": app.config.get("INVERTIS_LAT"),
         "APP_INVERTIS_LNG": app.config.get("INVERTIS_LNG"),
-        "APP_ALLOWED_RADIUS": app.config.get("ALLOWED_RADIUS_METERS")
+        "APP_ALLOWED_RADIUS": app.config.get("ALLOWED_RADIUS_METERS"),
+        "APP_GEOFENCE_ENFORCED": app.config.get("GEOFENCE_ENFORCED", True),
     }
 
 @app.route("/")

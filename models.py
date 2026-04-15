@@ -148,3 +148,5 @@ class AttendanceAttempt(db.Model):
 
     def __repr__(self):
         return f'<AttendanceAttempt s{self.session_id} u{self.student_id} ok={self.success}>'
+    
+    

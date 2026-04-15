@@ -1,5 +1,37 @@
 import os
 
+from dotenv import load_dotenv
+
+
+load_dotenv()
+
+
+def _env_float(name, default):
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+def _env_int(name, default):
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
+def _env_bool(name, default):
+    value = os.environ.get(name)
+    if value is None or value.strip() == "":
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY')
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///attendance.db')
@@ -31,10 +63,11 @@ class Config:
     FIREBASE_MESSAGING_SENDER_ID = os.environ.get('FIREBASE_MESSAGING_SENDER_ID', '')
     FIREBASE_APP_ID = os.environ.get('FIREBASE_APP_ID', '')
 
-    # Invertis University, Bareilly, UP coordinates (User Updated)
-    INVERTIS_LAT = 28.325764684367748
-    INVERTIS_LNG = 79.46097110207619
-    ALLOWED_RADIUS_METERS = 100  # 100 meters radius as requested
+    # Campus geofence settings (override from environment for local/dev setups)
+    INVERTIS_LAT = _env_float('INVERTIS_LAT', 28.2923217)
+    INVERTIS_LNG = _env_float('INVERTIS_LNG', 79.4930554)
+    ALLOWED_RADIUS_METERS = _env_int('ALLOWED_RADIUS_METERS', 100)
+    GEOFENCE_ENFORCED = _env_bool('GEOFENCE_ENFORCED', FLASK_ENV != 'development')
 
     # ─── Email Notification Settings ────────────────────────────────────────────
     # Set these in your .env file to enable attendance email notifications.

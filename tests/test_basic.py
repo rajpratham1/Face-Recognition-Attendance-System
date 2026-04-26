@@ -18,6 +18,7 @@ def test_index_page_loads():
 def test_security_cookie_flags_set():
     assert app.config["SESSION_COOKIE_HTTPONLY"] is True
     assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
+    assert app.config["SESSION_LOCATION_RADIUS_METERS"] == 50
 
 
 def test_teacher_session_roster_requires_login():

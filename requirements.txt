@@ -11,3 +11,4 @@ gunicorn==21.2.0
 python-dotenv==1.0.0
 geopy==2.4.1
 pytest==8.3.5
+cryptography==43.0.1

@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center mt-3">
+    <div class="col-lg-8 col-xl-7">
+        <div class="glass-card reveal-up">
+            <div class="section-head">
+                <div>
+                    <h3 class="mb-0">Edit User Details</h3>
+                    <p class="text-muted mb-0 small">Security-locked fields cannot be changed from this screen.</p>
+                </div>
+                <a href="{{ url_for('dashboard') }}#user-management" class="btn btn-outline-secondary btn-sm">Back</a>
+            </div>
+
+            <form method="POST" class="mt-2">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="alert alert-info small mb-3">
+                    You can update: <strong>Name</strong>, <strong>Department</strong>, and student academic fields. Locked: <strong>Email</strong>, <strong>Role</strong>, <strong>Password</strong>, <strong>Face data</strong>.
+                </div>
+
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Full Name</label>
+                        <input type="text" class="form-control" name="name" value="{{ user.name }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Email (Locked)</label>
+                        <input type="email" class="form-control" value="{{ user.email }}" disabled>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Department</label>
+                        <input type="text" class="form-control" name="department" value="{{ user.department }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Role (Locked)</label>
+                        <input type="text" class="form-control text-capitalize" value="{{ user.role }}" disabled>
+                    </div>
+                </div>
+
+                <div id="student-fields" class="mt-3 {% if user.role != 'student' %}d-none{% endif %}">
+                    <h6 class="mb-2">Student Academic Details</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">College ID</label>
+                            <input type="text" class="form-control" name="college_id" value="{{ user.college_id or '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Section</label>
+                            <input type="text" class="form-control" name="section" value="{{ user.section or '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Year</label>
+                            <input type="text" class="form-control" name="year" value="{{ user.year or '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Semester</label>
+                            <input type="text" class="form-control" name="semester" value="{{ user.semester or '' }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-4">
+                    <button type="submit" class="btn btn-custom">Save Changes</button>
+                    <a href="{{ url_for('dashboard') }}#user-management" class="btn btn-outline-secondary">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const studentFields = document.getElementById('student-fields');
+
+    if (studentFields && studentFields.classList.contains('d-none')) {
+        const inputs = studentFields.querySelectorAll('input');
+        inputs.forEach((input) => {
+            input.setAttribute('disabled', 'disabled');
+        });
+    }
+});
+</script>
+{% endblock %}

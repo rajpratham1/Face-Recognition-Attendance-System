@@ -1,13 +1,30 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div class="dashboard-shell reveal-up mb-4">
+    <div class="dashboard-hero">
+        <span class="hero-kicker">Teacher Workspace</span>
+        <h3 class="mb-1">Welcome back, {{ current_user.name }}</h3>
+        <p class="mb-2" style="opacity:.9;">{{ current_user.department }} - manage courses, sessions and attendance in one place.</p>
+        <div class="hero-stat-pills">
+            <span class="hero-stat-pill">Courses: {{ teacher_courses|length }}</span>
+            <span class="hero-stat-pill">Students: {{ students|length }}</span>
+            <span class="hero-stat-pill">Live: {{ active_session_count }}</span>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <a href="#create-live-session" class="btn btn-light btn-sm">Start Session</a>
+            <a href="#course-overview" class="btn btn-outline-light btn-sm">Course Overview</a>
+        </div>
+    </div>
+</div>
+
 <div class="row g-4">
     <div class="col-lg-4">
         <div class="glass-card h-100">
             <h4 class="mb-1">{{ current_user.name }}</h4>
             <p class="text-muted mb-3">Teacher Panel  -  {{ current_user.department }}</p>
             <div class="d-grid gap-2 mb-3">
-                <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom">Mark My Attendance</a>
+                <a href="{{ url_for('dashboard') }}#create-live-session" class="btn btn-custom">Start Managing Live Sessions</a>
             </div>
 
             <div class="panel-metric"><span>My Courses</span><strong>{{ teacher_courses|length }}</strong></div>
@@ -18,7 +35,7 @@
 
     <div class="col-lg-8">
         <div class="glass-card mb-4">
-            <h5 class="mb-3">Create Course</h5>
+            <div class="section-head"><h5>Create Course</h5></div>
             <form method="POST" action="{{ url_for('create_course') }}" class="row g-2">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="col-md-3"><input class="form-control" type="text" name="code" required placeholder="Code"></div>
@@ -29,10 +46,11 @@
         </div>
 
         <div class="glass-card mb-4">
-            <h5 class="mb-3">Enroll Student by Email</h5>
+            <div class="section-head"><h5>Enroll Student by Email</h5></div>
             {% if teacher_courses %}
-            <form method="POST" action="{{ url_for('enroll_student', course_id=teacher_courses[0].id) }}" id="enroll-form" class="row g-2">
+            <form method="POST" id="enroll-form" class="row g-2">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="course_id" id="enroll-course-id" value="{{ teacher_courses[0].id }}">
                 <div class="col-md-4">
                     <select id="enroll-course" class="form-select" required>
                         {% for course in teacher_courses %}
@@ -48,8 +66,8 @@
             {% endif %}
         </div>
 
-        <div class="glass-card mb-4">
-            <h5 class="mb-3">Create Live Class Session</h5>
+        <div class="glass-card mb-4" id="create-live-session">
+            <div class="section-head"><h5>Create Live Class Session</h5></div>
             {% if teacher_courses %}
             <form method="POST" action="{{ url_for('create_session') }}" class="row g-2">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -68,6 +86,10 @@
                         <option value="20">20 min</option>
                         <option value="30">30 min</option>
                         <option value="45">45 min</option>
+                        <option value="60">60 min</option>
+                        <option value="75">75 min</option>
+                        <option value="90">90 min</option>
+                        <option value="120">120 min</option>
                     </select>
                 </div>
                 <div class="col-12 d-grid"><button class="btn btn-custom" type="submit">Start Session</button></div>
@@ -78,7 +100,7 @@
         </div>
 
         <div class="glass-card mb-4">
-            <h5 class="mb-3">Session Attendance Panel</h5>
+            <div class="section-head"><h5>Session Attendance Panel</h5></div>
             {% if teacher_sessions %}
             <div class="session-grid">
                 {% for session in teacher_sessions %}
@@ -111,15 +133,19 @@
             {% endif %}
         </div>
 
-        <div class="glass-card">
-            <h5 class="mb-3">My Course Enrollment Overview</h5>
+        <div class="glass-card" id="course-overview">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0">My Course Enrollment Overview</h5>
+                <a href="{{ url_for('export_attendance') }}" class="btn btn-sm btn-outline-success">⬇ Export All CSV</a>
+            </div>
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover table-modern align-middle mb-0">
                     <thead>
                         <tr>
                             <th>Course</th>
                             <th>Section</th>
                             <th>Enrolled Students</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -129,10 +155,14 @@
                             <td>{{ course.code }} - {{ course.title }}</td>
                             <td>{{ course.section }}</td>
                             <td>{{ course_enrollment_count_map.get(course.id, 0) }}</td>
+                            <td>
+                                <a href="{{ url_for('course_attendance_report', course_id=course.id) }}" class="btn btn-sm btn-outline-primary me-1">📊 Report</a>
+                                <a href="{{ url_for('export_attendance', course_id=course.id) }}" class="btn btn-sm btn-outline-secondary">⬇ CSV</a>
+                            </td>
                         </tr>
                         {% endfor %}
                         {% else %}
-                        <tr><td colspan="3" class="text-center text-muted py-3">No courses yet.</td></tr>
+                        <tr><td colspan="4" class="text-center text-muted py-3">No courses yet.</td></tr>
                         {% endif %}
                     </tbody>
                 </table>
@@ -144,10 +174,16 @@
 <script>
     const enrollForm = document.getElementById('enroll-form');
     const enrollCourse = document.getElementById('enroll-course');
-    if (enrollForm && enrollCourse) {
+    const enrollCourseId = document.getElementById('enroll-course-id');
+    if (enrollForm && enrollCourse && enrollCourseId) {
+        // Sync hidden input AND form action on change
         enrollCourse.addEventListener('change', () => {
-            enrollForm.action = `/teacher/courses/${enrollCourse.value}/enroll`;
+            const id = enrollCourse.value;
+            enrollCourseId.value = id;
+            enrollForm.action = `/teacher/courses/${id}/enroll`;
         });
+        // Set correct action on page load
+        enrollForm.action = `/teacher/courses/${enrollCourse.value}/enroll`;
     }
 </script>
 {% endblock %}

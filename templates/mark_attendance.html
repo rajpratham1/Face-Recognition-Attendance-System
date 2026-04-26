@@ -41,6 +41,7 @@
     const locStatus = document.getElementById('location-status');
     const challengeBox = document.getElementById('challenge-box');
     const csrfToken = window.getCsrfToken();
+    const GEOFENCE_ENFORCED = {{ APP_GEOFENCE_ENFORCED | default(true) | tojson }};
 
     let userCoords = { lat: null, lng: null };
     let modelsLoaded = false;
@@ -73,12 +74,16 @@
     }
 
     function checkReady() {
-        if (modelsLoaded && userCoords.lat !== null) {
+        if (modelsLoaded && (!GEOFENCE_ENFORCED || userCoords.lat !== null)) {
             markBtn.disabled = false;
         }
     }
 
-    if (navigator.geolocation) {
+    if (!GEOFENCE_ENFORCED) {
+        locStatus.className = 'alert alert-warning py-2 small mb-3';
+        locStatus.innerHTML = '<i class="fas fa-unlock"></i> Development mode: campus geofence is disabled.';
+        checkReady();
+    } else if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 userCoords.lat = position.coords.latitude;

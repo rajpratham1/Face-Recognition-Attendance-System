@@ -50,6 +50,7 @@
     const sessionSelect = document.getElementById('session-id');
     const refreshBtn = document.getElementById('refresh-btn');
     const csrfToken = window.getCsrfToken();
+    const GEOFENCE_ENFORCED = {{ APP_GEOFENCE_ENFORCED | default(true) | tojson }};
 
     let userCoords = { lat: null, lng: null };
     let modelsLoaded = false;
@@ -76,7 +77,7 @@
 
     function checkReady() {
         const hasSession = !!sessionSelect.value;
-        markBtn.disabled = !(modelsLoaded && userCoords.lat !== null && hasSession);
+        markBtn.disabled = !(modelsLoaded && hasSession && (!GEOFENCE_ENFORCED || userCoords.lat !== null));
     }
 
     async function refreshSessions() {
@@ -102,7 +103,11 @@
         checkReady();
     }
 
-    if (navigator.geolocation) {
+    if (!GEOFENCE_ENFORCED) {
+        locStatus.className = 'alert alert-warning py-2 small mb-3';
+        locStatus.textContent = 'Development mode: campus geofence is disabled.';
+        checkReady();
+    } else if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 userCoords.lat = position.coords.latitude;

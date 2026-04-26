@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center mt-3">
+    <div class="col-lg-7 col-xl-6">
+        <div class="glass-card reveal-up">
+            <div class="section-head">
+                <div>
+                    <h3 class="mb-0">Change User Role</h3>
+                    <p class="text-muted mb-0 small">Switch between Student and Teacher only.</p>
+                </div>
+                <a href="{{ url_for('dashboard') }}#user-management" class="btn btn-outline-secondary btn-sm">Back</a>
+            </div>
+
+            <div class="alert alert-warning small mb-3">
+                <strong>Current Role:</strong> <span class="text-capitalize">{{ user.role }}</span>
+                <br>
+                Admin role changes are blocked from this panel.
+            </div>
+
+            <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                <div class="mb-3">
+                    <label class="form-label">User</label>
+                    <input type="text" class="form-control" value="{{ user.name }} ({{ user.email }})" disabled>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">New Role</label>
+                    <select class="form-select" name="role" id="new-role" required>
+                        <option value="student" {% if user.role == 'student' %}selected{% endif %}>Student</option>
+                        <option value="teacher" {% if user.role == 'teacher' %}selected{% endif %}>Teacher</option>
+                    </select>
+                </div>
+
+                <div id="student-role-fields" class="{% if user.role != 'student' %}d-none{% endif %}">
+                    <h6 class="mb-2">Required if switching to Student</h6>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">College ID</label>
+                            <input type="text" class="form-control" name="college_id" value="{{ user.college_id or '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Section</label>
+                            <input type="text" class="form-control" name="section" value="{{ user.section or '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Year</label>
+                            <input type="text" class="form-control" name="year" value="{{ user.year or '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Semester</label>
+                            <input type="text" class="form-control" name="semester" value="{{ user.semester or '' }}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-4">
+                    <button class="btn btn-custom" type="submit">Update Role</button>
+                    <a class="btn btn-outline-secondary" href="{{ url_for('dashboard') }}#user-management">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const roleSelect = document.getElementById('new-role');
+    const studentFields = document.getElementById('student-role-fields');
+
+    function syncFields() {
+        if (!roleSelect || !studentFields) return;
+        if (roleSelect.value === 'student') {
+            studentFields.classList.remove('d-none');
+        } else {
+            studentFields.classList.add('d-none');
+        }
+    }
+
+    if (roleSelect) {
+        roleSelect.addEventListener('change', syncFields);
+        syncFields();
+    }
+});
+</script>
+{% endblock %}

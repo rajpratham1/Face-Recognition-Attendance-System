@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 
 try:
@@ -8,6 +9,8 @@ except ImportError:
     firebase_admin = None
     credentials = None
     db = None
+
+logger = logging.getLogger(__name__)
 
 
 def init_firebase(app):
@@ -65,7 +68,8 @@ def sync_session_attendance(app, entry, session, student):
             'faceDistance': entry.face_distance,
             'deviceHash': entry.device_hash,
         })
-    except Exception:
+    except Exception as exc:
+        logger.warning("Firebase sync_session_attendance failed: %s", exc)
         return
 
 
@@ -76,5 +80,6 @@ def sync_attendance_attempt(app, payload):
         day_key = datetime.now(timezone.utc).strftime('%Y-%m-%d')
         ref = db.reference(f"attendance_attempts/{day_key}")
         ref.push(payload)
-    except Exception:
+    except Exception as exc:
+        logger.warning("Firebase sync_attendance_attempt failed: %s", exc)
         return

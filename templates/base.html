@@ -34,13 +34,16 @@
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}#user-manual">User Manual</a></li>
                     {% if current_user.is_authenticated %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a></li>
+                    {% if current_user.role == 'student' %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('mark_attendance') }}">Mark Attendance</a>
                     </li>
-                    {% if current_user.role == 'student' %}
                     <li class="nav-item"><span class="nav-link disabled">Student Panel</span></li>
                     {% elif current_user.role == 'teacher' %}
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}#create-live-session">Live Session</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}#course-overview">Courses</a></li>
                     <li class="nav-item"><span class="nav-link disabled">Teacher Panel</span></li>
                     {% elif current_user.role == 'admin' %}
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}#user-management">Users</a></li>
                     <li class="nav-item"><span class="nav-link disabled">Admin Panel</span></li>
                     {% endif %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('logout') }}">Logout</a></li>
@@ -86,8 +89,9 @@
             const INVERTIS_LAT = {{ APP_INVERTIS_LAT | default('null') | tojson }};
             const INVERTIS_LNG = {{ APP_INVERTIS_LNG | default('null') | tojson }};
             const ALLOWED_RADIUS = {{ APP_ALLOWED_RADIUS | default('100') | tojson }};
+            const GEOFENCE_ENFORCED = {{ APP_GEOFENCE_ENFORCED | default(true) | tojson }};
             
-            if (INVERTIS_LAT === null || INVERTIS_LNG === null || INVERTIS_LAT === "null") return;
+            if (!GEOFENCE_ENFORCED || INVERTIS_LAT === null || INVERTIS_LNG === null || INVERTIS_LAT === "null") return;
 
             const blocker = document.getElementById('geofence-blocker');
             const debugText = document.getElementById('geofence-debug');

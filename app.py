@@ -1,26 +1,29 @@
-# Main Flask application file
-# This file handles routing, authentication, attendance logic,
-# face recognition verification, and API endpoints
+import csv
+import hmac
 import hashlib
+import io
 import json
 import secrets
+import threading
 from math import isfinite
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import numpy as np
-from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 from geopy.distance import geodesic
 from sqlalchemy import func, text
+from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from config import Config
 from firebase_service import init_firebase, sync_attendance_attempt, sync_session_attendance
 from email_service import send_attendance_email  # ← Email notification feature
+from user_backup_service import backup_user_credentials, ensure_backup_schema, list_decrypted_user_credentials
 from models import (
     Attendance,
     AttendanceAttempt,
@@ -111,6 +114,8 @@ def today_local_date():
 
 
 def is_within_invertis(lat, lng):
+    if not app.config.get("GEOFENCE_ENFORCED", True):
+        return True
     if lat is None or lng is None:
         return False
     try:
@@ -230,6 +235,9 @@ def ensure_schema_compatibility():
         if "semester" not in users_columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN semester VARCHAR(10)"))
 
+    # Ensure separate encrypted backup DB table exists.
+    ensure_backup_schema(app)
+
 
 @app.after_request
 def add_header(response):
@@ -238,12 +246,30 @@ def add_header(response):
     response.headers['Expires'] = '-1'
     return response
 
+
+@app.before_request
+def auto_close_expired_sessions():
+    """Silently close any ClassSession whose ends_at has passed but is still marked active."""
+    try:
+        now = now_utc_naive()
+        expired = ClassSession.query.filter(
+            ClassSession.is_active.is_(True),
+            ClassSession.ends_at < now,
+        ).all()
+        if expired:
+            for s in expired:
+                s.is_active = False
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
 @app.context_processor
 def inject_geo_vars():
     return {
         "APP_INVERTIS_LAT": app.config.get("INVERTIS_LAT"),
         "APP_INVERTIS_LNG": app.config.get("INVERTIS_LNG"),
-        "APP_ALLOWED_RADIUS": app.config.get("ALLOWED_RADIUS_METERS")
+        "APP_ALLOWED_RADIUS": app.config.get("ALLOWED_RADIUS_METERS"),
+        "APP_GEOFENCE_ENFORCED": app.config.get("GEOFENCE_ENFORCED", True),
     }
 
 @app.route("/")
@@ -272,6 +298,12 @@ def register():
         if not consent:
             flash("You must accept biometric and privacy consent to continue.", "warning")
             return redirect(url_for("register"))
+        if len(password) < 8:
+            flash("Password must be at least 8 characters long.", "warning")
+            return redirect(url_for("register"))
+        if not any(c.isdigit() for c in password):
+            flash("Password must contain at least one number.", "warning")
+            return redirect(url_for("register"))
         if User.query.filter_by(email=email).first():
             flash("Email already registered", "danger")
             return redirect(url_for("register"))
@@ -293,6 +325,11 @@ def register():
         )
         db.session.add(new_user)
         db.session.commit()
+
+        try:
+            backup_user_credentials(app, new_user.id, new_user.email, password)
+        except Exception:
+            app.logger.exception("Encrypted credential backup failed for user_id=%s", new_user.id)
 
         login_user(new_user)
         return redirect(url_for("register_face"))
@@ -331,37 +368,51 @@ def save_face():
     if any(not isfinite(v) for v in normalized_descriptor):
         return jsonify({"success": False, "message": "Face data contains invalid values."}), 400
 
-    # ── Duplicate face check across ALL existing users ─────────────────────────
-    # Compare new face against every registered face in DB (any role).
-    # This prevents one person from creating multiple accounts (student/teacher).
+    # ── Duplicate face check across ALL existing users (vectorized) ──────────────
+    # Batch-compare new face against all registered faces using numpy,
+    # preventing one person creating multiple accounts (student/teacher).
     new_vec = np.array(normalized_descriptor)
-    FACE_DUPLICATE_THRESHOLD = 0.50  # strict: same person triggers below this
+    FACE_DUPLICATE_THRESHOLD = 0.50
     existing_users = User.query.filter(
         User.face_registered.is_(True),
         User.face_encoding.isnot(None),
-        User.id != current_user.id,           # allow re-registering own face
+        User.id != current_user.id,
     ).all()
 
-    for other in existing_users:
+    if existing_users:
         try:
-            other_vec = np.array(json.loads(other.face_encoding))
-            distance = float(np.linalg.norm(new_vec - other_vec))
-            if distance < FACE_DUPLICATE_THRESHOLD:
-                app.logger.warning(
-                    "Duplicate face attempt: user_id=%s vs existing user_id=%s (distance=%.4f)",
-                    current_user.id, other.id, distance,
-                )
-                role_label = other.role.capitalize()
-                return jsonify({
-                    "success": False,
-                    "message": (
-                        f"⚠ This face is already registered to another {role_label} account. "
-                        "Each person can only have one account across all roles."
-                    ),
-                }), 409
+            all_encodings = []
+            valid_users = []
+            for u in existing_users:
+                try:
+                    enc = json.loads(u.face_encoding)
+                    if isinstance(enc, list) and len(enc) == 128:
+                        all_encodings.append(enc)
+                        valid_users.append(u)
+                except Exception:
+                    continue  # skip corrupted encodings
+
+            if all_encodings:
+                enc_matrix = np.array(all_encodings)           # shape (N, 128)
+                distances = np.linalg.norm(enc_matrix - new_vec, axis=1)  # shape (N,)
+                min_idx = int(np.argmin(distances))
+                if distances[min_idx] < FACE_DUPLICATE_THRESHOLD:
+                    match_user = valid_users[min_idx]
+                    app.logger.warning(
+                        "Duplicate face attempt: user_id=%s vs existing user_id=%s (distance=%.4f)",
+                        current_user.id, match_user.id, distances[min_idx],
+                    )
+                    role_label = match_user.role.capitalize()
+                    return jsonify({
+                        "success": False,
+                        "message": (
+                            f"⚠ This face is already registered to another {role_label} account. "
+                            "Each person can only have one account across all roles."
+                        ),
+                    }), 409
         except Exception:
-            continue  # skip corrupted encoding gracefully
-    # ──────────────────────────────────────────────────────────────────────────
+            app.logger.exception("Face duplicate vectorized check failed for user_id=%s", current_user.id)
+    # ──────────────────────────────────────────────────────────────────────────────
 
     try:
         current_user.face_encoding = json.dumps(normalized_descriptor)
@@ -422,16 +473,13 @@ def mark_attendance():
             )
             db.session.add(new_attendance)
             db.session.commit()
-            # ── Email Notification ──────────────────────────────────────────────
-            send_attendance_email(
-                app,
-                student_name=current_user.name,
-                student_email=current_user.email,
-                course_code="General",
-                course_title="Daily Attendance",
-                marked_at=datetime.now(timezone.utc),
-            )
-            # ───────────────────────────────────────────────────────────────────
+            # ── Email Notification (background thread – non-blocking) ───────────
+            threading.Thread(
+                target=send_attendance_email,
+                args=(app, current_user.name, current_user.email, "General", "Daily Attendance", datetime.now(timezone.utc)),
+                daemon=True,
+            ).start()
+            # ────────────────────────────────────────────────────────────────────
             return jsonify({"success": True, "message": "Attendance marked successfully!"})
 
         return jsonify({"success": False, "message": "Face verification failed!"}), 400
@@ -732,21 +780,435 @@ def mark_session_attendance():
 
     sync_session_attendance(app, entry, session, current_user)
 
-    # ── Email Notification ──────────────────────────────────────────────────────
-    send_attendance_email(
-        app,
-        student_name=current_user.name,
-        student_email=current_user.email,
-        course_code=session.course_code,
-        course_title=session.title,
-        marked_at=datetime.now(timezone.utc),
-    )
+    # ── Email Notification (background thread – non-blocking) ──────────────────
+    threading.Thread(
+        target=send_attendance_email,
+        args=(app, current_user.name, current_user.email, session.course_code, session.title, datetime.now(timezone.utc)),
+        daemon=True,
+    ).start()
     # ────────────────────────────────────────────────────────────────────────────
 
     return jsonify({
         "success": True,
         "message": f"Attendance marked for {session.course_code} ({session.title})."
     })
+
+
+# ── Student: Reset/Re-enroll Face ─────────────────────────────────────────────
+@app.route("/student/reset_face", methods=["POST"])
+@login_required
+def reset_face():
+    """Allows a student to clear their face and re-register."""
+    if current_user.role not in ("student", "teacher"):
+        flash("Unauthorised.", "danger")
+        return redirect(url_for("dashboard"))
+    current_user.face_registered = False
+    current_user.face_encoding = None
+    db.session.commit()
+    flash("Face data cleared. Please re-register your face.", "info")
+    return redirect(url_for("register_face"))
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Teacher: Export Attendance CSV ────────────────────────────────────────────
+@app.route("/teacher/attendance/export")
+@login_required
+def export_attendance():
+    """Download a CSV of all session attendance for the teacher's courses."""
+    if current_user.role != "teacher":
+        flash("Only teachers can export attendance.", "danger")
+        return redirect(url_for("dashboard"))
+
+
+    course_id_filter = request.args.get("course_id", type=int)
+
+    # Build base query
+    query = (
+        db.session.query(
+            SessionAttendance,
+            ClassSession,
+            User,
+            Course,
+        )
+        .join(ClassSession, ClassSession.id == SessionAttendance.session_id)
+        .join(User, User.id == SessionAttendance.student_id)
+        .join(Course, Course.id == ClassSession.course_id)
+        .filter(ClassSession.teacher_id == current_user.id)
+    )
+    if course_id_filter:
+        query = query.filter(Course.id == course_id_filter)
+
+    rows = query.order_by(Course.code, User.name, SessionAttendance.marked_at).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Course Code", "Course Title", "Section", "Student Name",
+                     "College ID", "Marked At", "Room", "Face Distance"])
+    app_tz = ZoneInfo(app.config["APP_TIMEZONE"])
+    for sa, sess, student, course in rows:
+        marked = sa.marked_at
+        if marked and marked.tzinfo is None:
+            marked = marked.replace(tzinfo=timezone.utc)
+        local_marked = marked.astimezone(app_tz).strftime("%d %b %Y %I:%M %p") if marked else "-"
+        writer.writerow([
+            course.code,
+            course.title,
+            course.section,
+            student.name,
+            student.college_id or "-",
+            local_marked,
+            sess.room,
+            f"{sa.face_distance:.4f}" if sa.face_distance is not None else "-",
+        ])
+
+    output.seek(0)
+    filename = f"attendance_export_{today_local_date().isoformat()}.csv"
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Teacher: Per-Course Attendance Report ─────────────────────────────────────
+@app.route("/teacher/courses/<int:course_id>/report")
+@login_required
+def course_attendance_report(course_id):
+    """Show per-student attendance % for a specific course."""
+    if current_user.role != "teacher":
+        flash("Only teachers can view course reports.", "danger")
+        return redirect(url_for("dashboard"))
+
+    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first_or_404()
+
+    # All sessions ever held for this course
+    all_sessions = ClassSession.query.filter_by(course_id=course.id).all()
+    total_sessions = len(all_sessions)
+    session_ids = [s.id for s in all_sessions]
+
+    # All enrolled students
+    enrollments = (
+        User.query.join(Enrollment, Enrollment.student_id == User.id)
+        .filter(Enrollment.course_id == course.id)
+        .order_by(User.name.asc())
+        .all()
+    )
+
+    # Per-student attendance count
+    report = []
+    WARNING_THRESHOLD = 75.0
+    for student in enrollments:
+        attended = SessionAttendance.query.filter(
+            SessionAttendance.student_id == student.id,
+            SessionAttendance.session_id.in_(session_ids),
+        ).count() if session_ids else 0
+        pct = round((attended / total_sessions) * 100, 1) if total_sessions > 0 else 0.0
+        report.append({
+            "student": student,
+            "attended": attended,
+            "total": total_sessions,
+            "percentage": pct,
+            "low": pct < WARNING_THRESHOLD,
+        })
+
+    return render_template(
+        "course_report.html",
+        course=course,
+        report=report,
+        total_sessions=total_sessions,
+        teacher_courses=Course.query.filter_by(teacher_id=current_user.id).all(),
+    )
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Teacher: Unenroll a Student from a Course ─────────────────────────────────
+@app.route("/teacher/courses/<int:course_id>/unenroll/<int:student_id>", methods=["POST"])
+@login_required
+def unenroll_student(course_id, student_id):
+    if current_user.role != "teacher":
+        flash("Only teachers can unenroll students.", "danger")
+        return redirect(url_for("dashboard"))
+    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first_or_404()
+    enrollment = Enrollment.query.filter_by(course_id=course.id, student_id=student_id).first()
+    if enrollment:
+        db.session.delete(enrollment)
+        db.session.commit()
+        flash("Student unenrolled successfully.", "info")
+    else:
+        flash("Enrollment not found.", "warning")
+    return redirect(url_for("course_attendance_report", course_id=course.id))
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Teacher: Delete a Course ──────────────────────────────────────────────────
+@app.route("/teacher/courses/<int:course_id>/delete", methods=["POST"])
+@login_required
+def delete_course(course_id):
+    if current_user.role != "teacher":
+        flash("Only teachers can delete courses.", "danger")
+        return redirect(url_for("dashboard"))
+    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first_or_404()
+    # Cascade deletes enrollments (defined in model), sessions cascade their attendance
+    db.session.delete(course)
+    db.session.commit()
+    flash(f"Course '{course.code} – {course.title}' deleted.", "info")
+    return redirect(url_for("dashboard"))
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Admin: Delete a User ──────────────────────────────────────────────────────
+@app.route("/admin/users/<int:user_id>/edit", methods=["GET", "POST"])
+@login_required
+def admin_edit_user(user_id):
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if user.role == "admin":
+        flash("Admin accounts cannot be edited from this panel.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        department = request.form.get("department", "").strip()
+        college_id = request.form.get("college_id", "").strip()
+        section = request.form.get("section", "").strip()
+        year = request.form.get("year", "").strip()
+        semester = request.form.get("semester", "").strip()
+
+        if not name:
+            flash("Name is required.", "warning")
+            return render_template("admin_edit_user.html", user=user)
+        if not department:
+            flash("Department is required.", "warning")
+            return render_template("admin_edit_user.html", user=user)
+
+        if user.role == "student" and not (college_id and section and year and semester):
+            flash("Student requires College ID, Section, Year and Semester.", "warning")
+            return render_template("admin_edit_user.html", user=user)
+
+        user.name = name
+        user.department = department
+
+        if user.role == "student":
+            user.college_id = college_id
+            user.section = section
+            user.year = year
+            user.semester = semester
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("Unable to update user due to a data conflict.", "danger")
+            return render_template("admin_edit_user.html", user=user)
+
+        flash(f"User '{user.name}' updated successfully.", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("admin_edit_user.html", user=user)
+
+
+@app.route("/admin/users/<int:user_id>/change_role", methods=["GET", "POST"])
+@login_required
+def admin_change_user_role(user_id):
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if user.role == "admin":
+        flash("Admin account role cannot be changed from this panel.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        new_role = request.form.get("role", "").strip().lower()
+        college_id = request.form.get("college_id", "").strip()
+        section = request.form.get("section", "").strip()
+        year = request.form.get("year", "").strip()
+        semester = request.form.get("semester", "").strip()
+
+        if new_role not in ["student", "teacher"]:
+            flash("Only Student or Teacher role is allowed from this action.", "danger")
+            return render_template("admin_change_role.html", user=user)
+
+        if user.role == new_role:
+            flash("User already has this role.", "info")
+            return redirect(url_for("dashboard"))
+
+        if new_role == "student" and not (college_id and section and year and semester):
+            flash("College ID, Section, Year and Semester are required when switching to Student.", "warning")
+            return render_template("admin_change_role.html", user=user)
+
+        old_role = user.role
+        user.role = new_role
+
+        if new_role == "student":
+            user.college_id = college_id
+            user.section = section
+            user.year = year
+            user.semester = semester
+        else:
+            user.college_id = None
+            user.section = None
+            user.year = None
+            user.semester = None
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("Role change failed due to data conflict.", "danger")
+            return render_template("admin_change_role.html", user=user)
+
+        flash(f"Role updated: {user.name} ({old_role} -> {new_role}).", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("admin_change_role.html", user=user)
+
+
+# ── Admin: Delete a User ──────────────────────────────────────────────────────
+@app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
+@login_required
+def admin_delete_user(user_id):
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "warning")
+        return redirect(url_for("dashboard"))
+    if user.id == current_user.id:
+        flash("You cannot delete your own admin account.", "danger")
+        return redirect(url_for("dashboard"))
+    db.session.delete(user)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash("User could not be deleted because related records still exist. Please contact admin to clean linked data.", "danger")
+        return redirect(url_for("dashboard"))
+    flash(f"User '{user.name}' deleted.", "info")
+    return redirect(url_for("dashboard"))
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Admin: Clear a User's Face Data ──────────────────────────────────────────
+@app.route("/admin/users/<int:user_id>/clear_face", methods=["POST"])
+@login_required
+def admin_clear_face(user_id):
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "warning")
+        return redirect(url_for("dashboard"))
+    user.face_registered = False
+    user.face_encoding = None
+    db.session.commit()
+    flash(f"Face data cleared for '{user.name}'.", "info")
+    return redirect(url_for("dashboard"))
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Admin: Secret Credentials View (2-step check) ────────────────────────────
+@app.route("/admin/secret_credentials", methods=["GET", "POST"])
+@login_required
+def admin_secret_credentials():
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+
+    credentials = []
+    unlocked = False
+
+    if request.method == "POST":
+        submitted_key = request.form.get("secret_key", "")
+        expected_key = app.config.get("ADMIN_SECRET_VIEW_KEY", "")
+
+        if not expected_key:
+            flash("Secret key is not configured on server.", "danger")
+            return render_template("admin_secret_credentials.html", credentials=credentials, unlocked=unlocked)
+
+        if not hmac.compare_digest(submitted_key, expected_key):
+            flash("Invalid secret key.", "danger")
+            return render_template("admin_secret_credentials.html", credentials=credentials, unlocked=unlocked)
+
+        try:
+            credentials = list_decrypted_user_credentials(app)
+            unlocked = True
+        except Exception:
+            app.logger.exception("Failed to read decrypted user credential backup.")
+            flash("Unable to read encrypted backup store right now.", "danger")
+
+    return render_template("admin_secret_credentials.html", credentials=credentials, unlocked=unlocked)
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── API: Live session attendance counts (for teacher polling) ─────────────────
+@app.route("/api/session_counts")
+@login_required
+def api_session_counts():
+    """Returns current attendance counts for all of this teacher's active sessions."""
+    if current_user.role != "teacher":
+        return jsonify({}), 403
+    rows = (
+        db.session.query(SessionAttendance.session_id, func.count(SessionAttendance.id))
+        .join(ClassSession, ClassSession.id == SessionAttendance.session_id)
+        .filter(ClassSession.teacher_id == current_user.id)
+        .group_by(SessionAttendance.session_id)
+        .all()
+    )
+    return jsonify({str(sid): count for sid, count in rows})
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Student: Per-course attendance breakdown API ───────────────────────────────
+@app.route("/api/my_course_attendance")
+@login_required
+def api_my_course_attendance():
+    """Returns per-course attendance % for the logged-in student."""
+    if current_user.role != "student":
+        return jsonify([]), 403
+    enrolled_courses = (
+        Course.query.join(Enrollment, Enrollment.course_id == Course.id)
+        .filter(Enrollment.student_id == current_user.id)
+        .all()
+    )
+    result = []
+    for course in enrolled_courses:
+        session_ids = [s.id for s in ClassSession.query.filter_by(course_id=course.id).all()]
+        total = len(session_ids)
+        attended = (
+            SessionAttendance.query.filter(
+                SessionAttendance.student_id == current_user.id,
+                SessionAttendance.session_id.in_(session_ids),
+            ).count()
+            if session_ids else 0
+        )
+        pct = round((attended / total) * 100, 1) if total > 0 else 0.0
+        result.append({
+            "course_code": course.code,
+            "course_title": course.title,
+            "section": course.section,
+            "attended": attended,
+            "total": total,
+            "percentage": pct,
+            "low": pct < 75,
+        })
+    return jsonify(result)
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 @app.route("/login", methods=["GET", "POST"])

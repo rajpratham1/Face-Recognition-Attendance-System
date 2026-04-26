@@ -1,6 +1,23 @@
 {% extends "base.html" %}
 
 {% block content %}
+<div class="dashboard-shell reveal-up mb-4">
+    <div class="dashboard-hero">
+        <span class="hero-kicker">Student Workspace</span>
+        <h3 class="mb-1">Hi {{ current_user.name }}, you're all set</h3>
+        <p class="mb-2" style="opacity:.9;">Track live classes and monitor your attendance progress in real time.</p>
+        <div class="hero-stat-pills">
+            <span class="hero-stat-pill">Live Sessions: {{ active_sessions|length }}</span>
+            <span class="hero-stat-pill">Attendance: {{ attendance_percentage }}%</span>
+            <span class="hero-stat-pill">Records: {{ session_records|length }}</span>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <a href="{{ url_for('mark_attendance') }}" class="btn btn-light btn-sm">Mark Attendance</a>
+            <a href="#daily-records" class="btn btn-outline-light btn-sm">My Records</a>
+        </div>
+    </div>
+</div>
+
 <div class="row g-4">
     <div class="col-lg-4">
         <div class="glass-card text-center h-100">
@@ -9,35 +26,35 @@
             <p class="text-muted mb-3">Student Panel  -  {{ current_user.department }}</p>
             <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom w-100 mb-2">Open Session Attendance</a>
             <div class="panel-metric mt-2"><span>Live Sessions</span><strong>{{ active_sessions|length }}</strong></div>
+            <hr class="my-3">
+            <form method="POST" action="{{ url_for('reset_face') }}" onsubmit="return confirm('Reset your face data? You will need to re-scan before marking attendance again.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-outline-warning btn-sm w-100">📷 Re-scan Face</button>
+            </form>
         </div>
     </div>
 
     <div class="col-lg-8">
         <div class="glass-card mb-4">
-            <h4 class="mb-3">My Enrolled Courses</h4>
-            {% if enrolled_courses %}
-            <div class="session-grid">
-                {% for course in enrolled_courses %}
-                <div class="session-card student-live">
-                    <h6 class="mb-1">{{ course.code }}  -  {{ course.title }}</h6>
-                    <p class="small text-muted mb-0">Section: {{ course.section }}</p>
-                </div>
-                {% endfor %}
+            <div class="section-head"><h4>My Course Attendance Breakdown</h4></div>
+            <div id="course-breakdown">
+                <p class="text-muted small">Loading…</p>
             </div>
-            {% else %}
-            <p class="text-muted mb-0">No course enrollment found. Contact your teacher.</p>
-            {% endif %}
         </div>
 
         <div class="glass-card mb-4">
-            <h4 class="mb-3">Live Classes Available</h4>
+            <div class="section-head"><h4>Live Classes Available</h4></div>
             {% if active_sessions %}
             <div class="session-grid">
                 {% for session in active_sessions %}
                 <div class="session-card student-live">
                     <h6 class="mb-1">{{ session.course_code }}  -  {{ session.title }}</h6>
                     <p class="small text-muted mb-1">Room: {{ session.room }}</p>
-                    <p class="small mb-0">Ends at {{ session.ends_at|localdtfmt('%I:%M %p') }} ({{ app_timezone }})</p>
+                    <p class="small mb-1">Ends at {{ session.ends_at|localdtfmt('%I:%M %p') }} ({{ app_timezone }})</p>
+                    <p class="small mb-0 fw-bold att-warn" id="countdown-{{ session.id }}"
+                       data-ends="{{ session.ends_at|localdtfmt('%Y-%m-%dT%H:%M:%S') }}">
+                        ⏱ Calculating…
+                    </p>
                 </div>
                 {% endfor %}
             </div>
@@ -46,10 +63,10 @@
             {% endif %}
         </div>
 
-        <div class="glass-card mb-4">
-            <h4 class="mb-3">My Session Attendance</h4>
+        <div class="glass-card mb-4" id="session-records">
+            <div class="section-head"><h4>My Session Attendance</h4></div>
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover table-modern align-middle mb-0">
                     <thead>
                         <tr>
                             <th>Course</th>
@@ -78,13 +95,30 @@
             </div>
         </div>
 
-        <div class="glass-card">
-            <h4 class="mb-3">My Daily Attendance Records</h4>
+        <div class="glass-card" id="daily-records">
+            <div class="section-head"><h4>My Daily Attendance Records</h4></div>
 
-            <h5 style="color: rgb(4, 67, 18); font-weight: bold;">Attendance(%): {{ attendance_percentage }}</h5>
+            {% set pct = attendance_percentage %}
+            {% set bar_class = 'bg-success' if pct >= 75 else ('bg-warning' if pct >= 50 else 'bg-danger') %}
+            {% set txt_class = 'att-good' if pct >= 75 else ('att-warn' if pct >= 50 else 'att-bad') %}
+            <div class="mb-3">
+                <div class="d-flex justify-content-between mb-1">
+                    <span class="fw-semibold">Attendance</span>
+                    <span class="fw-bold {{ txt_class }}">{{ pct }}%
+                        {% if pct < 75 %}<span class="badge bg-danger ms-1">⚠ Low</span>{% endif %}
+                    </span>
+                </div>
+                <div class="progress" style="height: 10px; border-radius: 8px;">
+                    <div class="progress-bar {{ bar_class }} js-pct-bar"
+                        role="progressbar"
+                        data-pct="{{ pct }}"
+                        aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100">
+                    </div>
+                </div>
+            </div>
 
             <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
+                <table class="table table-hover table-modern align-middle mb-0">
                     <thead>
                         <tr>
                             <th>Date</th>
@@ -112,4 +146,12 @@
         </div>
     </div>
 </div>
+
+<script>
+  document.querySelectorAll('.js-pct-bar').forEach(function(bar) {
+      var pct = parseFloat(bar.dataset.pct) || 0;
+      bar.style.width = pct + '%';
+      bar.style.transition = 'width 0.6s ease';
+  });
+</script>
 {% endblock %}

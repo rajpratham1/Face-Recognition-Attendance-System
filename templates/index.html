@@ -1,195 +1,147 @@
 {% extends "base.html" %}
 
 {% block content %}
-<section class="hero-shell glass-card mb-4">
-    <div class="row align-items-center g-4">
+<section class="home-hero mb-4 reveal-up">
+    <div class="row g-4 align-items-center">
         <div class="col-lg-7">
-            <p class="eyebrow mb-2">Smart Attendance Platform</p>
-            <h1 class="display-5 fw-bold mb-3">Face + Location powered attendance for students and teachers</h1>
-            <p class="lead text-muted mb-4">Secure classroom attendance with face verification, campus geofence checks,
-                and role-based dashboards for complete visibility.</p>
+            <p class="eyebrow mb-2">Attendance Intelligence Suite</p>
+            <h1 class="display-5 fw-bold mb-3">Fast, reliable attendance with face verification and campus geofence</h1>
+            <p class="lead mb-4 text-muted">Built for classrooms that need trust, speed, and clean reporting across students, teachers, and admins.</p>
 
             {% if current_user.is_authenticated %}
-            <div class="d-flex flex-wrap gap-2">
+            <div class="d-flex flex-wrap gap-2 mb-3">
                 {% if current_user.role == 'student' %}
-                <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom btn-lg">Open Attendance Panel</a>
+                <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom btn-lg">Mark Attendance Now</a>
                 {% elif current_user.role == 'teacher' %}
                 <a href="{{ url_for('dashboard') }}#create-live-session" class="btn btn-custom btn-lg">Start Live Session</a>
                 {% elif current_user.role == 'admin' %}
-                <a href="{{ url_for('dashboard') }}#user-management" class="btn btn-custom btn-lg">Open User Management</a>
+                <a href="{{ url_for('dashboard') }}#user-management" class="btn btn-custom btn-lg">Manage Users</a>
                 {% endif %}
-                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary btn-lg">Go to Dashboard</a>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-outline-primary btn-lg">Open Dashboard</a>
             </div>
             {% else %}
-            <div class="d-flex flex-wrap gap-2">
+            <div class="d-flex flex-wrap gap-2 mb-3">
                 <a href="{{ url_for('register') }}" class="btn btn-custom btn-lg">Create Account</a>
                 <a href="{{ url_for('login') }}" class="btn btn-outline-primary btn-lg">Login</a>
             </div>
             {% endif %}
+
+            <div class="home-chip-row">
+                <span class="home-chip">Face Match</span>
+                <span class="home-chip">Geofence Validation</span>
+                <span class="home-chip">Role Based Dashboards</span>
+                <span class="home-chip">Audit Ready Logs</span>
+            </div>
         </div>
 
         <div class="col-lg-5">
-            <div class="panel-stack">
-                <article class="panel-card panel-student">
-                    <h5 class="mb-2">Student Panel</h5>
-                    <p class="small mb-0">Daily check-in, face verification, and personal attendance history.</p>
+            <div class="home-status-stack">
+                <article class="home-status-card">
+                    <div class="status-dot status-ok"></div>
+                    <div>
+                        <h6 class="mb-1">Real-Time Session Attendance</h6>
+                        <p class="small text-muted mb-0">Teachers can open session windows and track marked counts live.</p>
+                    </div>
                 </article>
-                <article class="panel-card panel-teacher">
-                    <h5 class="mb-2">Teacher Panel</h5>
-                    <p class="small mb-0">Monitor student attendance trends and review recent records quickly.</p>
+                <article class="home-status-card">
+                    <div class="status-dot status-secure"></div>
+                    <div>
+                        <h6 class="mb-1">Secure Biometric Workflow</h6>
+                        <p class="small text-muted mb-0">Face descriptor based verification with single-face validation checks.</p>
+                    </div>
                 </article>
-                <article class="panel-card panel-admin">
-                    <h5 class="mb-2">Admin Panel</h5>
-                    <p class="small mb-0">Institution-wide attendance console and reporting controls.</p>
+                <article class="home-status-card">
+                    <div class="status-dot status-geo"></div>
+                    <div>
+                        <h6 class="mb-1">Campus Boundary Enforcement</h6>
+                        <p class="small text-muted mb-0">Attendance marking is restricted to approved geofence radius.</p>
+                    </div>
                 </article>
             </div>
         </div>
     </div>
 </section>
 
-<section class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="glass-card h-100">
-            <h6>1. Register + Face Setup</h6>
-            <p class="text-muted mb-0">Users create an account, choose role, and register face descriptor.</p>
+<section class="mb-4">
+    <div class="row g-3">
+        <div class="col-md-4">
+            <article class="home-flow-card h-100">
+                <span class="flow-step">Step 1</span>
+                <h5>Register and Scan Face</h5>
+                <p class="text-muted mb-0">Create your account, choose role, and complete one-time biometric setup.</p>
+            </article>
         </div>
-    </div>
-    <div class="col-md-4">
-        <div class="glass-card h-100">
-            <h6>2. Verify During Check-in</h6>
-            <p class="text-muted mb-0">System checks geolocation and matches live face before marking attendance.</p>
+        <div class="col-md-4">
+            <article class="home-flow-card h-100">
+                <span class="flow-step">Step 2</span>
+                <h5>Start or Join Session</h5>
+                <p class="text-muted mb-0">Teachers launch live classes, students choose active sessions to check in.</p>
+            </article>
         </div>
-    </div>
-    <div class="col-md-4">
-        <div class="glass-card h-100">
-            <h6>3. Track in Dashboards</h6>
-            <p class="text-muted mb-0">Students see own records, teachers see students, admin sees full reports.</p>
+        <div class="col-md-4">
+            <article class="home-flow-card h-100">
+                <span class="flow-step">Step 3</span>
+                <h5>Track and Report</h5>
+                <p class="text-muted mb-0">Review daily records, session trends, and export reports as needed.</p>
+            </article>
         </div>
     </div>
 </section>
 
-<section id="user-manual" class="glass-card mb-4">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+<section class="glass-card mb-4" id="user-manual">
+    <div class="section-head">
         <div>
-            <p class="eyebrow mb-1">Documentation</p>
-            <h3 class="mb-0">User Manual</h3>
+            <p class="eyebrow mb-1">User Manual</p>
+            <h3 class="mb-0">Role-Based Quick Guide</h3>
         </div>
-        <a href="{{ url_for('register') }}" class="btn btn-custom">Start Using System</a>
-    </div>
-    <p class="text-muted mb-4">Follow these steps to use attendance correctly and avoid rejected check-ins.</p>
-    <div class="alert alert-warning small mb-4">
-        <strong>Biometric Notice:</strong> Face descriptors are used only for attendance verification and protected audit logs.
-        Use of this platform indicates consent to institutional attendance policies.
-    </div>
-    <div class="alert alert-info small mb-4">
-        <strong>Firebase Setup:</strong> Fill your keys in <code>.env.firebase.example</code> (or copy to <code>.env</code>),
-        then apply <code>firebase.database.rules.json</code> and <code>firebase.database.indexes.json</code> in Firebase Console.
+        <a href="{{ url_for('register') }}" class="btn btn-custom">Get Started</a>
     </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
+        <div class="col-lg-4">
             <div class="manual-quick h-100">
-                <h6>Student Quick Flow</h6>
-                <p class="small mb-0">Login, open active session, verify face, allow location, submit once.</p>
+                <h6 class="mb-2">Student Flow</h6>
+                <p class="small text-muted mb-2">Use this path for fastest attendance marking.</p>
+                <ol class="small mb-0">
+                    <li>Register as student and scan face.</li>
+                    <li>Wait for teacher to open live session.</li>
+                    <li>Open Mark Attendance and submit.</li>
+                </ol>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-lg-4">
             <div class="manual-quick h-100">
-                <h6>Teacher Quick Flow</h6>
-                <p class="small mb-0">Create live class session, monitor marked count, close session when class ends.</p>
+                <h6 class="mb-2">Teacher Flow</h6>
+                <p class="small text-muted mb-2">Manage attendance windows in real time.</p>
+                <ol class="small mb-0">
+                    <li>Create course and enroll students.</li>
+                    <li>Start class session with duration.</li>
+                    <li>Close session and review report.</li>
+                </ol>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-lg-4">
             <div class="manual-quick h-100">
-                <h6>Admin Quick Flow</h6>
-                <p class="small mb-0">Review platform-wide records, verify trends, and export reports if required.</p>
+                <h6 class="mb-2">Admin Flow</h6>
+                <p class="small text-muted mb-2">Oversee users, compliance, and operations.</p>
+                <ol class="small mb-0">
+                    <li>Review attendance and user states.</li>
+                    <li>Clear face data if re-scan needed.</li>
+                    <li>Use print/export for records.</li>
+                </ol>
             </div>
         </div>
     </div>
 
-    <div class="accordion manual-accordion" id="manualAccordion">
-        <div class="accordion-item">
-            <h2 class="accordion-header">
-                <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#manualStudent">
-                    Student Guide
-                </button>
-            </h2>
-            <div id="manualStudent" class="accordion-collapse collapse show" data-bs-parent="#manualAccordion">
-                <div class="accordion-body">
-                    <ol class="mb-0">
-                        <li>Create account with role set to <strong>Student</strong>.</li>
-                        <li>Register your face once in good lighting and stable camera position.</li>
-                        <li>Wait for teacher to start a live class session.</li>
-                        <li>Open <strong>Mark Attendance</strong> and select the active session.</li>
-                        <li>Allow camera and GPS permissions.</li>
-                        <li>Keep only one face in frame and submit attendance.</li>
-                        <li>Check <strong>My Session Attendance</strong> in dashboard for confirmation.</li>
-                    </ol>
-                </div>
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="alert alert-warning small mb-0 h-100">
+                <strong>Biometric Notice:</strong> Face descriptors are used only for attendance verification and protected audit logging.
             </div>
         </div>
-
-        <div class="accordion-item">
-            <h2 class="accordion-header">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#manualTeacher">
-                    Teacher Guide
-                </button>
-            </h2>
-            <div id="manualTeacher" class="accordion-collapse collapse" data-bs-parent="#manualAccordion">
-                <div class="accordion-body">
-                    <ol class="mb-0">
-                        <li>Create account with role set to <strong>Teacher</strong>.</li>
-                        <li>Open dashboard and use <strong>Create Live Class Session</strong>.</li>
-                        <li>Add session title, course code, room, and duration.</li>
-                        <li>Track real-time marked counts in session panel.</li>
-                        <li>Close session manually when attendance window ends.</li>
-                        <li>Review student daily and session-wise attendance panels.</li>
-                    </ol>
-                </div>
-            </div>
-        </div>
-
-        <div class="accordion-item">
-            <h2 class="accordion-header">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#manualAdmin">
-                    Admin Guide
-                </button>
-            </h2>
-            <div id="manualAdmin" class="accordion-collapse collapse" data-bs-parent="#manualAccordion">
-                <div class="accordion-body">
-                    <ol class="mb-0">
-                        <li>Login with admin account.</li>
-                        <li>Use admin dashboard to review all users and attendance.</li>
-                        <li>Verify role-wise participation and attendance trends.</li>
-                        <li>Use report/print actions for institutional records.</li>
-                    </ol>
-                </div>
-            </div>
-        </div>
-
-        <div class="accordion-item">
-            <h2 class="accordion-header">
-                <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#manualTroubleshoot">
-                    Troubleshooting and Rules
-                </button>
-            </h2>
-            <div id="manualTroubleshoot" class="accordion-collapse collapse" data-bs-parent="#manualAccordion">
-                <div class="accordion-body">
-                    <p class="mb-2"><strong>If attendance fails:</strong></p>
-                    <ul>
-                        <li>Enable camera and location permissions in browser settings.</li>
-                        <li>Ensure you are inside campus geofence.</li>
-                        <li>Keep face centered, alone in frame, and retry.</li>
-                        <li>Use stable internet and updated browser.</li>
-                    </ul>
-                    <p class="mb-2"><strong>Important rules:</strong></p>
-                    <ul class="mb-0">
-                        <li>No active session = no student attendance marking.</li>
-                        <li>Only one attendance per student per session is allowed.</li>
-                        <li>Proxy attempts with multiple faces are rejected.</li>
-                        <li>Course enrollment is mandatory before session attendance.</li>
-                    </ul>
-                </div>
+        <div class="col-lg-6">
+            <div class="alert alert-info small mb-0 h-100">
+                <strong>Setup Tip:</strong> Keep Firebase keys in .env and apply rules/index files from the deployment folder.
             </div>
         </div>
     </div>

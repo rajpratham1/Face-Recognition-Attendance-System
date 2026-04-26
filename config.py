@@ -67,6 +67,7 @@ class Config:
     INVERTIS_LAT = _env_float('INVERTIS_LAT', 28.2923217)
     INVERTIS_LNG = _env_float('INVERTIS_LNG', 79.4930554)
     ALLOWED_RADIUS_METERS = _env_int('ALLOWED_RADIUS_METERS', 100)
+    SESSION_LOCATION_RADIUS_METERS = _env_int('SESSION_LOCATION_RADIUS_METERS', 50)
     GEOFENCE_ENFORCED = _env_bool('GEOFENCE_ENFORCED', FLASK_ENV != 'development')
 
     # ─── Email Notification Settings ────────────────────────────────────────────

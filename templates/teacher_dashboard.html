@@ -69,8 +69,13 @@
         <div class="glass-card mb-4" id="create-live-session">
             <div class="section-head"><h5>Create Live Class Session</h5></div>
             {% if teacher_courses %}
-            <form method="POST" action="{{ url_for('create_session') }}" class="row g-2">
+            <div id="session-location-status" class="alert alert-info small mb-3">
+                Classroom location will be captured when you start the live session.
+            </div>
+            <form method="POST" action="{{ url_for('create_session') }}" class="row g-2" id="create-session-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="teacher_lat" id="teacher-lat">
+                <input type="hidden" name="teacher_lng" id="teacher-lng">
                 <div class="col-md-5">
                     <select class="form-select" name="course_id" required>
                         {% for course in teacher_courses %}
@@ -92,8 +97,9 @@
                         <option value="120">120 min</option>
                     </select>
                 </div>
-                <div class="col-12 d-grid"><button class="btn btn-custom" type="submit">Start Session</button></div>
+                <div class="col-12 d-grid"><button class="btn btn-custom" type="submit" id="create-session-btn">Start Session</button></div>
             </form>
+            <p class="small text-muted mb-0 mt-2">Students will only be able to mark attendance within {{ APP_SESSION_RADIUS }} meters of your captured classroom location.</p>
             {% else %}
             <p class="text-muted mb-0">Create a course first to start sessions.</p>
             {% endif %}
@@ -182,6 +188,11 @@
     const enrollForm = document.getElementById('enroll-form');
     const enrollCourse = document.getElementById('enroll-course');
     const enrollCourseId = document.getElementById('enroll-course-id');
+    const createSessionForm = document.getElementById('create-session-form');
+    const createSessionBtn = document.getElementById('create-session-btn');
+    const sessionLocationStatus = document.getElementById('session-location-status');
+    const teacherLatInput = document.getElementById('teacher-lat');
+    const teacherLngInput = document.getElementById('teacher-lng');
     if (enrollForm && enrollCourse && enrollCourseId) {
         // Sync hidden input AND form action on change
         enrollCourse.addEventListener('change', () => {
@@ -191,6 +202,38 @@
         });
         // Set correct action on page load
         enrollForm.action = `/teacher/courses/${enrollCourse.value}/enroll`;
+    }
+
+    if (createSessionForm && createSessionBtn && sessionLocationStatus && teacherLatInput && teacherLngInput) {
+        createSessionForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+
+            if (!navigator.geolocation) {
+                sessionLocationStatus.className = 'alert alert-danger small mb-3';
+                sessionLocationStatus.textContent = 'Geolocation is not supported in this browser. Use a device with location access to start a class session.';
+                return;
+            }
+
+            createSessionBtn.disabled = true;
+            sessionLocationStatus.className = 'alert alert-info small mb-3';
+            sessionLocationStatus.textContent = 'Capturing classroom location...';
+
+            navigator.geolocation.getCurrentPosition(
+                function (position) {
+                    teacherLatInput.value = position.coords.latitude;
+                    teacherLngInput.value = position.coords.longitude;
+                    sessionLocationStatus.className = 'alert alert-success small mb-3';
+                    sessionLocationStatus.textContent = 'Classroom location captured. Starting live session...';
+                    createSessionForm.submit();
+                },
+                function () {
+                    createSessionBtn.disabled = false;
+                    sessionLocationStatus.className = 'alert alert-danger small mb-3';
+                    sessionLocationStatus.textContent = 'Location access is required. Go to the classroom and allow location before starting a live session.';
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        });
     }
 </script>
 {% endblock %}

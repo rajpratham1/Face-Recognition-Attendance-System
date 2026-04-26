@@ -88,6 +88,11 @@ Notes:
 Purpose:
 - Marks attendance for a session after enrollment, geofence, and face checks.
 
+Behavior notes:
+- Teacher session creation captures the classroom location.
+- Students must be within the live session classroom radius to mark attendance.
+- If a student is outside the allowed classroom area, the API returns a clear "Go to the classroom" style message.
+
 Request body:
 
 ```json

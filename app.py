@@ -17,7 +17,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 from geopy.distance import geodesic
-from sqlalchemy import func, text
+from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -133,6 +133,49 @@ def is_within_invertis(lat, lng):
     app.logger.info(f"Geofence Check: User Location {user_location} -> Distance to campus: {distance:.2f} meters")
     
     return distance <= app.config["ALLOWED_RADIUS_METERS"]
+
+
+def _parse_coordinates(lat, lng):
+    try:
+        parsed_lat = float(lat)
+        parsed_lng = float(lng)
+    except (ValueError, TypeError):
+        return None, None
+    return parsed_lat, parsed_lng
+
+
+def classroom_geofence_status(session, lat, lng):
+    parsed_lat, parsed_lng = _parse_coordinates(lat, lng)
+    if parsed_lat is None or parsed_lng is None:
+        return {
+            "ok": False,
+            "reason": "missing_location",
+            "message": "Current location is required for classroom attendance.",
+        }
+
+    if session.location_lat is None or session.location_lng is None:
+        return {
+            "ok": False,
+            "reason": "session_location_missing",
+            "message": "Teacher classroom location is unavailable for this session.",
+        }
+
+    radius = int(session.location_radius_meters or app.config["SESSION_LOCATION_RADIUS_METERS"])
+    distance = geodesic(
+        (parsed_lat, parsed_lng),
+        (float(session.location_lat), float(session.location_lng)),
+    ).meters
+    return {
+        "ok": distance <= radius,
+        "reason": "outside_classroom_radius" if distance > radius else "inside_classroom_radius",
+        "distance": distance,
+        "radius": radius,
+        "message": (
+            f"Go to the classroom to mark attendance. You are about {distance:.0f} meters away from the live class area."
+            if distance > radius
+            else ""
+        ),
+    }
 
 
 def get_request_meta(data):
@@ -301,17 +344,21 @@ def build_session_roster(session):
 
 def ensure_schema_compatibility():
     db.create_all()
-    if not str(db.engine.url).startswith("sqlite"):
-        return
 
     def _columns(conn, table_name):
-        rows = conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
-        return {row[1] for row in rows}
+        inspector = inspect(conn)
+        return {column["name"] for column in inspector.get_columns(table_name)}
 
     with db.engine.begin() as conn:
         class_session_columns = _columns(conn, "class_sessions")
         if "course_id" not in class_session_columns:
             conn.execute(text("ALTER TABLE class_sessions ADD COLUMN course_id INTEGER"))
+        if "location_lat" not in class_session_columns:
+            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_lat FLOAT"))
+        if "location_lng" not in class_session_columns:
+            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_lng FLOAT"))
+        if "location_radius_meters" not in class_session_columns:
+            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_radius_meters INTEGER DEFAULT 50"))
 
         session_attendance_columns = _columns(conn, "session_attendance")
         if "device_hash" not in session_attendance_columns:
@@ -365,6 +412,7 @@ def inject_geo_vars():
         "APP_INVERTIS_LAT": app.config.get("INVERTIS_LAT"),
         "APP_INVERTIS_LNG": app.config.get("INVERTIS_LNG"),
         "APP_ALLOWED_RADIUS": app.config.get("ALLOWED_RADIUS_METERS"),
+        "APP_SESSION_RADIUS": app.config.get("SESSION_LOCATION_RADIUS_METERS"),
         "APP_GEOFENCE_ENFORCED": app.config.get("GEOFENCE_ENFORCED", True),
     }
 
@@ -646,6 +694,8 @@ def create_session():
     course_id_raw = request.form.get("course_id", "").strip()
     room = request.form.get("room", "").strip()
     duration_raw = request.form.get("duration", "15").strip()
+    teacher_lat_raw = request.form.get("teacher_lat", "").strip()
+    teacher_lng_raw = request.form.get("teacher_lng", "").strip()
 
     try:
         course_id = int(course_id_raw)
@@ -660,6 +710,15 @@ def create_session():
 
     if not room:
         flash("Room/Lab is required.", "warning")
+        return redirect(url_for("dashboard"))
+
+    teacher_lat, teacher_lng = _parse_coordinates(teacher_lat_raw, teacher_lng_raw)
+    if teacher_lat is None or teacher_lng is None:
+        flash("Location access is required. Go to the classroom and allow location before starting a session.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if not is_within_invertis(teacher_lat, teacher_lng):
+        flash("Go to the classroom inside campus before starting a live session.", "warning")
         return redirect(url_for("dashboard"))
 
     try:
@@ -680,10 +739,16 @@ def create_session():
         ends_at=ends_at,
         teacher_id=current_user.id,
         is_active=True,
+        location_lat=teacher_lat,
+        location_lng=teacher_lng,
+        location_radius_meters=app.config["SESSION_LOCATION_RADIUS_METERS"],
     )
     db.session.add(new_session)
     db.session.commit()
-    flash("Class session created and is now live for enrolled students.", "success")
+    flash(
+        f"Class session created. Students must be within {app.config['SESSION_LOCATION_RADIUS_METERS']} meters of the classroom to mark attendance.",
+        "success",
+    )
     return redirect(url_for("dashboard"))
 
 
@@ -792,10 +857,24 @@ def mark_session_attendance():
         db.session.commit()
         return jsonify({"success": False, "message": "This session is not active now."}), 400
 
-    if not is_within_invertis(lat, lng):
-        record_attempt(session.id, current_user.id, False, "Outside campus", lat, lng, None, device_hash, ip_address, user_agent)
+    classroom_status = classroom_geofence_status(session, lat, lng)
+    if not classroom_status["ok"]:
+        failure_reason = {
+            "missing_location": "Student location unavailable",
+            "session_location_missing": "Teacher classroom location missing",
+            "outside_classroom_radius": "Outside classroom radius",
+        }.get(classroom_status["reason"], "Classroom location check failed")
+        record_attempt(session.id, current_user.id, False, failure_reason, lat, lng, None, device_hash, ip_address, user_agent)
         db.session.commit()
-        return jsonify({"success": False, "message": "Attendance can only be marked within Invertis University campus."}), 400
+        if classroom_status["reason"] == "session_location_missing":
+            return jsonify({
+                "success": False,
+                "message": "Teacher classroom location is missing for this session. Ask your teacher to restart the live class from the classroom.",
+            }), 400
+        return jsonify({
+            "success": False,
+            "message": classroom_status["message"] or "Go to the classroom to mark attendance.",
+        }), 400
 
     already_marked = SessionAttendance.query.filter_by(session_id=session.id, student_id=current_user.id).first()
     if already_marked:

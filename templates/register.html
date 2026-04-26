@@ -3,7 +3,7 @@
 {% block content %}
 <div class="row justify-content-center mt-4">
     <div class="col-lg-6">
-        <div class="glass-card">
+        <div class="glass-card reveal-up">
             <h2 class="text-center mb-2">Create Your Account</h2>
             <p class="text-center text-muted mb-4">Choose role and complete registration for attendance access.</p>
             <form method="POST">
@@ -81,8 +81,11 @@
 
                 <div class="mb-3">
                     <label class="form-label">Password</label>
-                    <input type="password" name="password" class="form-control" required minlength="8"
-                           pattern="^(?=.*\d).{8,}$" title="At least 8 characters with at least one number">
+                    <div class="input-group">
+                        <input type="password" id="register-password" name="password" class="form-control" required minlength="8"
+                               pattern="^(?=.*\d).{8,}$" title="At least 8 characters with at least one number">
+                        <button type="button" class="btn btn-outline-secondary" id="toggle-register-password">Show</button>
+                    </div>
                     <div class="form-text">Min 8 characters, must include at least one number.</div>
                 </div>
                 <div class="mb-3 form-check">
@@ -104,6 +107,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const roleSelect = document.querySelector('select[name="role"]');
     const studentFieldsWrap = document.getElementById('student-extra-fields');
     const studentInputs = studentFieldsWrap.querySelectorAll('input, select');
+    const passwordInput = document.getElementById('register-password');
+    const togglePassword = document.getElementById('toggle-register-password');
 
     function toggleStudentFields() {
         if (roleSelect.value === 'student') {
@@ -117,6 +122,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     roleSelect.addEventListener('change', toggleStudentFields);
     toggleStudentFields(); // Initialize on load
+
+    if (passwordInput && togglePassword) {
+        togglePassword.addEventListener('click', function() {
+            const isHidden = passwordInput.type === 'password';
+            passwordInput.type = isHidden ? 'text' : 'password';
+            togglePassword.textContent = isHidden ? 'Hide' : 'Show';
+        });
+    }
 });
 </script>
 {% endblock %}

@@ -11,6 +11,10 @@
             <span class="hero-stat-pill">Attendance: {{ attendance_percentage }}%</span>
             <span class="hero-stat-pill">Records: {{ session_records|length }}</span>
         </div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <a href="{{ url_for('mark_attendance') }}" class="btn btn-light btn-sm">Mark Attendance</a>
+            <a href="#daily-records" class="btn btn-outline-light btn-sm">My Records</a>
+        </div>
     </div>
 </div>
 
@@ -59,7 +63,7 @@
             {% endif %}
         </div>
 
-        <div class="glass-card mb-4">
+        <div class="glass-card mb-4" id="session-records">
             <div class="section-head"><h4>My Session Attendance</h4></div>
             <div class="table-responsive">
                 <table class="table table-hover table-modern align-middle mb-0">
@@ -91,7 +95,7 @@
             </div>
         </div>
 
-        <div class="glass-card">
+        <div class="glass-card" id="daily-records">
             <div class="section-head"><h4>My Daily Attendance Records</h4></div>
 
             {% set pct = attendance_percentage %}

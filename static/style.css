@@ -287,6 +287,20 @@ body {
     font-weight: 600;
 }
 
+.btn-hero-action {
+    background: #ffffff;
+    color: #0b6e4f;
+    border: 1px solid rgba(255, 255, 255, 0.92);
+    font-weight: 700;
+    border-radius: 12px;
+}
+
+.btn-hero-action:hover {
+    background: #f8fafc;
+    color: #08553d;
+    border-color: #ffffff;
+}
+
 .metric-tile {
     border-radius: 16px;
     padding: 1rem;

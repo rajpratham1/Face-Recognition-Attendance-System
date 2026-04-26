@@ -3,7 +3,7 @@
 {% block content %}
 <div class="row justify-content-center mt-4">
     <div class="col-lg-5">
-        <div class="glass-card">
+        <div class="glass-card reveal-up">
             <h2 class="text-center mb-2">Portal Login</h2>
             <p class="text-center text-muted mb-4">Student, teacher, and admin access</p>
             <form method="POST">
@@ -14,7 +14,10 @@
                 </div>
                 <div class="mb-3">
                     <label class="form-label">Password</label>
-                    <input type="password" name="password" class="form-control" required>
+                    <div class="input-group">
+                        <input type="password" id="login-password" name="password" class="form-control" required>
+                        <button type="button" class="btn btn-outline-secondary" id="toggle-login-password">Show</button>
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-custom w-100 py-3">Login to Dashboard</button>
             </form>
@@ -22,4 +25,17 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const input = document.getElementById('login-password');
+    const toggle = document.getElementById('toggle-login-password');
+    if (!input || !toggle) return;
+    toggle.addEventListener('click', function() {
+        const isHidden = input.type === 'password';
+        input.type = isHidden ? 'text' : 'password';
+        toggle.textContent = isHidden ? 'Hide' : 'Show';
+    });
+});
+</script>
 {% endblock %}

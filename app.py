@@ -958,6 +958,126 @@ def delete_course(course_id):
 
 
 # ── Admin: Delete a User ──────────────────────────────────────────────────────
+@app.route("/admin/users/<int:user_id>/edit", methods=["GET", "POST"])
+@login_required
+def admin_edit_user(user_id):
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if user.role == "admin":
+        flash("Admin accounts cannot be edited from this panel.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        department = request.form.get("department", "").strip()
+        college_id = request.form.get("college_id", "").strip()
+        section = request.form.get("section", "").strip()
+        year = request.form.get("year", "").strip()
+        semester = request.form.get("semester", "").strip()
+
+        if not name:
+            flash("Name is required.", "warning")
+            return render_template("admin_edit_user.html", user=user)
+        if not department:
+            flash("Department is required.", "warning")
+            return render_template("admin_edit_user.html", user=user)
+
+        if user.role == "student" and not (college_id and section and year and semester):
+            flash("Student requires College ID, Section, Year and Semester.", "warning")
+            return render_template("admin_edit_user.html", user=user)
+
+        user.name = name
+        user.department = department
+
+        if user.role == "student":
+            user.college_id = college_id
+            user.section = section
+            user.year = year
+            user.semester = semester
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("Unable to update user due to a data conflict.", "danger")
+            return render_template("admin_edit_user.html", user=user)
+
+        flash(f"User '{user.name}' updated successfully.", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("admin_edit_user.html", user=user)
+
+
+@app.route("/admin/users/<int:user_id>/change_role", methods=["GET", "POST"])
+@login_required
+def admin_change_user_role(user_id):
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+
+    user = db.session.get(User, user_id)
+    if not user:
+        flash("User not found.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if user.role == "admin":
+        flash("Admin account role cannot be changed from this panel.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        new_role = request.form.get("role", "").strip().lower()
+        college_id = request.form.get("college_id", "").strip()
+        section = request.form.get("section", "").strip()
+        year = request.form.get("year", "").strip()
+        semester = request.form.get("semester", "").strip()
+
+        if new_role not in ["student", "teacher"]:
+            flash("Only Student or Teacher role is allowed from this action.", "danger")
+            return render_template("admin_change_role.html", user=user)
+
+        if user.role == new_role:
+            flash("User already has this role.", "info")
+            return redirect(url_for("dashboard"))
+
+        if new_role == "student" and not (college_id and section and year and semester):
+            flash("College ID, Section, Year and Semester are required when switching to Student.", "warning")
+            return render_template("admin_change_role.html", user=user)
+
+        old_role = user.role
+        user.role = new_role
+
+        if new_role == "student":
+            user.college_id = college_id
+            user.section = section
+            user.year = year
+            user.semester = semester
+        else:
+            user.college_id = None
+            user.section = None
+            user.year = None
+            user.semester = None
+
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("Role change failed due to data conflict.", "danger")
+            return render_template("admin_change_role.html", user=user)
+
+        flash(f"Role updated: {user.name} ({old_role} -> {new_role}).", "success")
+        return redirect(url_for("dashboard"))
+
+    return render_template("admin_change_role.html", user=user)
+
+
+# ── Admin: Delete a User ──────────────────────────────────────────────────────
 @app.route("/admin/users/<int:user_id>/delete", methods=["POST"])
 @login_required
 def admin_delete_user(user_id):

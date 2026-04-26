@@ -105,6 +105,7 @@
             <div class="session-grid">
                 {% for session in teacher_sessions %}
                 <div class="session-card">
+                    {% set roster_counts = session_roster_count_map.get(session.id, {}) %}
                     <div class="d-flex justify-content-between align-items-start gap-2">
                         <div>
                             <h6 class="mb-1">{{ session.course_code }}  -  {{ session.title }}</h6>
@@ -119,6 +120,12 @@
                             <div class="fw-bold">{{ session_attendance_count_map.get(session.id, 0) }}</div>
                         </div>
                     </div>
+                    <div class="d-flex flex-wrap gap-2 mt-3 mb-2">
+                        <span class="badge bg-success-subtle text-success border">Marked: {{ roster_counts.get('marked', 0) }}</span>
+                        <span class="badge bg-danger-subtle text-danger border">Failed: {{ roster_counts.get('failed', 0) }}</span>
+                        <span class="badge bg-warning-subtle text-dark border">Pending: {{ roster_counts.get('pending', 0) }}</span>
+                    </div>
+                    <a href="{{ url_for('teacher_session_roster', session_id=session.id) }}" class="btn btn-sm btn-outline-primary mt-1">Open Roster</a>
                     {% if session.is_active and session.ends_at >= now %}
                     <form method="POST" action="{{ url_for('close_session', session_id=session.id) }}" class="mt-2">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

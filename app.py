@@ -1,4 +1,5 @@
 import csv
+from collections import defaultdict
 import hmac
 import hashlib
 import io
@@ -201,6 +202,101 @@ def teacher_students_query(teacher_id):
         .filter(Course.teacher_id == teacher_id, User.role == "student")
         .distinct()
     )
+
+
+def build_session_roster(session):
+    enrolled_students = []
+    enrolled_by_id = {}
+    if session.course_id:
+        enrolled_students = (
+            User.query.join(Enrollment, Enrollment.student_id == User.id)
+            .filter(Enrollment.course_id == session.course_id, User.role == "student")
+            .order_by(User.name.asc())
+            .all()
+        )
+        enrolled_by_id = {student.id: student for student in enrolled_students}
+
+    marked_entries = []
+    marked_ids = set()
+    marked_rows = (
+        db.session.query(SessionAttendance, User)
+        .join(User, User.id == SessionAttendance.student_id)
+        .filter(SessionAttendance.session_id == session.id)
+        .order_by(SessionAttendance.marked_at.desc())
+        .all()
+    )
+    for attendance_row, student in marked_rows:
+        marked_ids.add(student.id)
+        marked_entries.append(
+            {
+                "student": student,
+                "attendance": attendance_row,
+                "enrolled": student.id in enrolled_by_id,
+            }
+        )
+
+    failed_attempt_groups = {}
+    failed_attempt_rows = (
+        db.session.query(AttendanceAttempt, User)
+        .outerjoin(User, User.id == AttendanceAttempt.student_id)
+        .filter(
+            AttendanceAttempt.session_id == session.id,
+            AttendanceAttempt.success.is_(False),
+        )
+        .order_by(AttendanceAttempt.created_at.desc())
+        .all()
+    )
+    for attempt, student in failed_attempt_rows:
+        student_key = attempt.student_id if attempt.student_id is not None else f"attempt:{attempt.id}"
+        if student_key not in failed_attempt_groups:
+            failed_attempt_groups[student_key] = {
+                "student_id": attempt.student_id,
+                "student": student,
+                "attempt_count": 0,
+                "last_reason": attempt.reason,
+                "last_attempt_at": attempt.created_at,
+                "reasons": defaultdict(int),
+                "enrolled": bool(student and student.id in enrolled_by_id),
+            }
+
+        group = failed_attempt_groups[student_key]
+        group["attempt_count"] += 1
+        group["reasons"][attempt.reason] += 1
+
+    failed_entries = []
+    failed_student_ids = set()
+    for entry in failed_attempt_groups.values():
+        if entry["student_id"] in marked_ids:
+            continue
+        entry["reason_summary"] = ", ".join(
+            f"{reason} ({count})" for reason, count in sorted(entry["reasons"].items())
+        )
+        failed_entries.append(entry)
+        if entry["student_id"] is not None:
+            failed_student_ids.add(entry["student_id"])
+
+    failed_entries.sort(
+        key=lambda item: item["last_attempt_at"] or datetime.min.replace(tzinfo=timezone.utc),
+        reverse=True,
+    )
+
+    pending_entries = []
+    for student in enrolled_students:
+        if student.id in marked_ids or student.id in failed_student_ids:
+            continue
+        pending_entries.append({"student": student})
+
+    return {
+        "marked_entries": marked_entries,
+        "failed_entries": failed_entries,
+        "pending_entries": pending_entries,
+        "counts": {
+            "enrolled": len(enrolled_students),
+            "marked": len(marked_entries),
+            "failed": len(failed_entries),
+            "pending": len(pending_entries),
+        },
+    }
 
 
 def ensure_schema_compatibility():
@@ -604,6 +700,24 @@ def close_session(session_id):
     db.session.commit()
     flash("Class session closed.", "info")
     return redirect(url_for("dashboard"))
+
+
+@app.route("/teacher/sessions/<int:session_id>/roster")
+@login_required
+def teacher_session_roster(session_id):
+    if current_user.role != "teacher":
+        flash("Only teachers can view session rosters.", "danger")
+        return redirect(url_for("dashboard"))
+
+    session = ClassSession.query.filter_by(id=session_id, teacher_id=current_user.id).first_or_404()
+    roster = build_session_roster(session)
+    is_live = bool(session.is_active and session.ends_at >= now_utc_naive())
+    return render_template(
+        "teacher_session_roster.html",
+        session=session,
+        roster=roster,
+        is_live=is_live,
+    )
 
 
 @app.route("/api/active_sessions")
@@ -1309,6 +1423,9 @@ def dashboard():
             .group_by(SessionAttendance.session_id)
             .all()
         )
+        session_roster_count_map = {}
+        for teacher_session in teacher_sessions:
+            session_roster_count_map[teacher_session.id] = build_session_roster(teacher_session)["counts"]
 
         my_attendance = Attendance.query.filter_by(user_id=current_user.id).order_by(Attendance.date.desc()).all()
         return render_template(
@@ -1323,6 +1440,7 @@ def dashboard():
             teacher_sessions=teacher_sessions,
             active_session_count=active_session_count,
             session_attendance_count_map=session_attendance_count_map,
+            session_roster_count_map=session_roster_count_map,
             now=now,
         )
 

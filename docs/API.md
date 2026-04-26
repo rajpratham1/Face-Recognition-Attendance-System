@@ -42,6 +42,7 @@ This document covers the current HTTP routes and JSON APIs exposed by the applic
 - POST /teacher/courses/<course_id>/enroll
 - POST /teacher/sessions/create
 - POST /teacher/sessions/<session_id>/close
+- GET /teacher/sessions/<session_id>/roster
 - GET /teacher/attendance/export
 - GET /teacher/courses/<course_id>/report
 - POST /teacher/courses/<course_id>/unenroll/<student_id>

@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-shell reveal-up mb-4">
+    <div class="dashboard-hero">
+        <span class="hero-kicker">Live Session Roster</span>
+        <h3 class="mb-1">{{ session.course_code }} - {{ session.title }}</h3>
+        <p class="mb-2" style="opacity:.9;">Room {{ session.room }} | {{ session.starts_at|localdtfmt('%d %b %Y %I:%M %p') }} to {{ session.ends_at|localdtfmt('%I:%M %p') }}</p>
+        <div class="hero-stat-pills">
+            <span class="hero-stat-pill">Enrolled: {{ roster.counts.enrolled }}</span>
+            <span class="hero-stat-pill">Marked: {{ roster.counts.marked }}</span>
+            <span class="hero-stat-pill">Failed: {{ roster.counts.failed }}</span>
+            <span class="hero-stat-pill">Pending: {{ roster.counts.pending }}</span>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <a href="{{ url_for('dashboard') }}" class="btn btn-light btn-sm">Back to Dashboard</a>
+            <a href="{{ url_for('teacher_session_roster', session_id=session.id) }}" class="btn btn-outline-light btn-sm">Refresh Now</a>
+            {% if is_live %}
+            <span class="badge bg-success align-self-center">Auto-refresh every 20 seconds</span>
+            {% else %}
+            <span class="badge bg-secondary align-self-center">Session closed</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="glass-card h-100">
+            <h5 class="mb-3">Roster Summary</h5>
+            <div class="panel-metric"><span>Marked Successfully</span><strong>{{ roster.counts.marked }}</strong></div>
+            <div class="panel-metric"><span>Failed Attempts</span><strong>{{ roster.counts.failed }}</strong></div>
+            <div class="panel-metric"><span>No Attempt Yet</span><strong>{{ roster.counts.pending }}</strong></div>
+            <div class="panel-metric"><span>Total Enrolled</span><strong>{{ roster.counts.enrolled }}</strong></div>
+
+            <hr class="my-3">
+
+            {% if is_live %}
+            <div class="alert alert-info small mb-0">
+                This page stays useful during a live class. Keep it open to monitor students who have marked, failed, or not attempted yet.
+            </div>
+            {% else %}
+            <div class="alert alert-secondary small mb-0">
+                Session is closed. The roster below is a final snapshot of what happened during this class.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="glass-card mb-4">
+            <div class="section-head">
+                <h5 class="mb-0">Students Who Marked Attendance</h5>
+                <span class="badge bg-success">{{ roster.marked_entries|length }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-modern align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>College ID</th>
+                            <th>Marked At</th>
+                            <th>Face Distance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if roster.marked_entries %}
+                        {% for row in roster.marked_entries %}
+                        <tr>
+                            <td class="fw-semibold">{{ row.student.name }}</td>
+                            <td>{{ row.student.college_id or '—' }}</td>
+                            <td>{{ row.attendance.marked_at|localdtfmt('%d %b %Y %I:%M %p') }}</td>
+                            <td>{{ '%.4f'|format(row.attendance.face_distance) if row.attendance.face_distance is not none else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-3">No student has marked attendance for this session yet.</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="glass-card mb-4">
+            <div class="section-head">
+                <h5 class="mb-0">Students Who Tried But Failed</h5>
+                <span class="badge bg-danger">{{ roster.failed_entries|length }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-modern align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Enrollment</th>
+                            <th>Attempts</th>
+                            <th>Latest Reason</th>
+                            <th>Last Attempt</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if roster.failed_entries %}
+                        {% for row in roster.failed_entries %}
+                        <tr>
+                            <td class="fw-semibold">{{ row.student.name if row.student else 'Unknown user' }}</td>
+                            <td>
+                                {% if row.enrolled %}
+                                <span class="badge bg-warning text-dark">Enrolled</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Not enrolled</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ row.attempt_count }}</td>
+                            <td>
+                                <div>{{ row.last_reason }}</div>
+                                {% if row.attempt_count > 1 %}
+                                <div class="small text-muted">{{ row.reason_summary }}</div>
+                                {% endif %}
+                            </td>
+                            <td>{{ row.last_attempt_at|localdtfmt('%d %b %Y %I:%M %p') if row.last_attempt_at else '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-3">No failed attempts recorded for this session.</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="glass-card">
+            <div class="section-head">
+                <h5 class="mb-0">Students With No Attempt Yet</h5>
+                <span class="badge bg-warning text-dark">{{ roster.pending_entries|length }}</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover table-modern align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>College ID</th>
+                            <th>Section</th>
+                            <th>Year</th>
+                            <th>Semester</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if roster.pending_entries %}
+                        {% for row in roster.pending_entries %}
+                        <tr>
+                            <td class="fw-semibold">{{ row.student.name }}</td>
+                            <td>{{ row.student.college_id or '—' }}</td>
+                            <td>{{ row.student.section or '—' }}</td>
+                            <td>{{ row.student.year or '—' }}</td>
+                            <td>{{ row.student.semester or '—' }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-muted py-3">Everyone has either marked attendance or already attempted.</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if is_live %}
+<script>
+    window.setTimeout(function () {
+        window.location.reload();
+    }, 20000);
+</script>
+{% endif %}
+{% endblock %}

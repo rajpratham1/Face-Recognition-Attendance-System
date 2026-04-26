@@ -1,6 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
-from datetime import datetime
+from datetime import datetime, timezone
 
 db = SQLAlchemy()
 
@@ -20,13 +20,14 @@ class User(UserMixin, db.Model):
     semester = db.Column(db.String(10), nullable=True)
     face_encoding = db.Column(db.Text, nullable=True)   # JSON of 128-D vector
     face_registered = db.Column(db.Boolean, default=False)
-    registered_at = db.Column(db.DateTime, default=datetime.utcnow)
+    registered_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    attendances = db.relationship('Attendance', backref='user', lazy=True)
-    created_sessions = db.relationship('ClassSession', backref='teacher', lazy=True, foreign_keys='ClassSession.teacher_id')
-    session_attendances = db.relationship('SessionAttendance', backref='student', lazy=True, foreign_keys='SessionAttendance.student_id')
-    teacher_courses = db.relationship('Course', backref='teacher', lazy=True, foreign_keys='Course.teacher_id')
-    enrollments = db.relationship('Enrollment', backref='student', lazy=True, foreign_keys='Enrollment.student_id')
+    attendances = db.relationship('Attendance', backref='user', lazy=True, cascade='all, delete-orphan')
+    created_sessions = db.relationship('ClassSession', backref='teacher', lazy=True, foreign_keys='ClassSession.teacher_id', cascade='all, delete-orphan')
+    session_attendances = db.relationship('SessionAttendance', backref='student', lazy=True, foreign_keys='SessionAttendance.student_id', cascade='all, delete-orphan')
+    teacher_courses = db.relationship('Course', backref='teacher', lazy=True, foreign_keys='Course.teacher_id', cascade='all, delete-orphan')
+    enrollments = db.relationship('Enrollment', backref='student', lazy=True, foreign_keys='Enrollment.student_id', cascade='all, delete-orphan')
+    attendance_attempts = db.relationship('AttendanceAttempt', backref='attempted_by_student', lazy=True, foreign_keys='AttendanceAttempt.student_id')
 
     def __repr__(self):
         return f'<User {self.name}>'
@@ -63,7 +64,7 @@ class ClassSession(db.Model):
     ends_at = db.Column(db.DateTime, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     session_attendances = db.relationship('SessionAttendance', backref='session', lazy=True, cascade='all, delete-orphan')
 
@@ -77,10 +78,10 @@ class SessionAttendance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('class_sessions.id'), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    marked_at = db.Column(db.DateTime, default=datetime.utcnow)
+    marked_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     latitude = db.Column(db.Float, nullable=True)
     longitude = db.Column(db.Float, nullable=True)
-    face_distance = db.Column(db.Float, nullable=False)
+    face_distance = db.Column(db.Float, nullable=True)
     device_hash = db.Column(db.String(128), nullable=True)
     ip_address = db.Column(db.String(64), nullable=True)
     user_agent = db.Column(db.String(255), nullable=True)
@@ -101,9 +102,9 @@ class Course(db.Model):
     title = db.Column(db.String(120), nullable=False)
     section = db.Column(db.String(40), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
-    sessions = db.relationship('ClassSession', backref='course', lazy=True)
+    sessions = db.relationship('ClassSession', backref='course', lazy=True, cascade='all, delete-orphan')
     enrollments = db.relationship('Enrollment', backref='course', lazy=True, cascade='all, delete-orphan')
 
     __table_args__ = (
@@ -120,7 +121,7 @@ class Enrollment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     course_id = db.Column(db.Integer, db.ForeignKey('courses.id'), nullable=False)
     student_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    enrolled_at = db.Column(db.DateTime, default=datetime.utcnow)
+    enrolled_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         db.UniqueConstraint('course_id', 'student_id', name='unique_course_student'),
@@ -144,7 +145,7 @@ class AttendanceAttempt(db.Model):
     device_hash = db.Column(db.String(128), nullable=True)
     ip_address = db.Column(db.String(64), nullable=True)
     user_agent = db.Column(db.String(255), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def __repr__(self):
         return f'<AttendanceAttempt s{self.session_id} u{self.student_id} ok={self.success}>'

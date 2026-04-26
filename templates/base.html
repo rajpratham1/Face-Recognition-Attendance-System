@@ -34,13 +34,16 @@
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('index') }}#user-manual">User Manual</a></li>
                     {% if current_user.is_authenticated %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}">Dashboard</a></li>
+                    {% if current_user.role == 'student' %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('mark_attendance') }}">Mark Attendance</a>
                     </li>
-                    {% if current_user.role == 'student' %}
                     <li class="nav-item"><span class="nav-link disabled">Student Panel</span></li>
                     {% elif current_user.role == 'teacher' %}
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}#create-live-session">Live Session</a></li>
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}#course-overview">Courses</a></li>
                     <li class="nav-item"><span class="nav-link disabled">Teacher Panel</span></li>
                     {% elif current_user.role == 'admin' %}
+                    <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard') }}#user-management">Users</a></li>
                     <li class="nav-item"><span class="nav-link disabled">Admin Panel</span></li>
                     {% endif %}
                     <li class="nav-item"><a class="nav-link" href="{{ url_for('logout') }}">Logout</a></li>

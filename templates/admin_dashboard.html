@@ -1,31 +1,67 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="glass-card mb-4">
-    <div class="d-flex justify-content-between align-items-center flex-wrap">
+{% set non_admin_users = users | rejectattr('role', 'equalto', 'admin') | list %}
+{% set face_registered_count = non_admin_users | selectattr('face_registered') | list | length %}
+{% set students = non_admin_users | selectattr('role', 'equalto', 'student') | list %}
+{% set teachers = non_admin_users | selectattr('role', 'equalto', 'teacher') | list %}
+
+<div class="dashboard-shell reveal-up">
+<div class="dashboard-hero mb-2">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
         <div>
-            <h2>Admin Attendance Console</h2>
-            <p class="text-muted">Invertis University Faculty Records</p>
+            <span class="hero-kicker">Administrator</span>
+            <h2 class="mb-1">Admin Attendance Console</h2>
+            <p class="mb-0" style="opacity:.9;">Invertis University - Full Platform View</p>
         </div>
-        <div class="d-flex gap-2">
-            <button class="btn btn-outline-primary" onclick="window.print()">
-                <i class="fas fa-print me-2"></i> Print Report
-            </button>
+        <button class="btn btn-outline-primary" onclick="window.print()">🖨 Print Report</button>
+    </div>
+</div>
+
+{# ── Stats Row ── #}
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="metric-tile metric-blue text-center">
+            <div class="metric-label">Total Users</div>
+            <div class="metric-value">{{ non_admin_users|length }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="metric-tile metric-green text-center">
+            <div class="metric-label">Today's Attendance</div>
+            <div class="metric-value">{{ today_count }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="metric-tile metric-slate text-center">
+            <div class="metric-label">Face Registered</div>
+            <div class="metric-value">{{ face_registered_count }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="metric-tile metric-orange text-center">
+            <div class="metric-label">Face Pending</div>
+            <div class="metric-value">{{ non_admin_users|length - face_registered_count }}</div>
         </div>
     </div>
 </div>
 
-<div class="glass-card">
+{# ── 7-Day Attendance Heat Grid ── #}
+<div class="glass-card mb-4">
+    <div class="section-head">
+        <h5>7-Day Attendance Overview</h5>
+        <div class="hero-stat-pills">
+            <span class="hero-stat-pill">Students: {{ students|length }}</span>
+            <span class="hero-stat-pill">Teachers: {{ teachers|length }}</span>
+        </div>
+    </div>
     <div class="table-responsive">
-        <table class="table table-bordered table-hover align-middle">
-            <thead class="bg-light">
+        <table class="table table-bordered table-hover table-modern align-middle mb-0">
+            <thead class="table-light">
                 <tr>
-                    <th rowspan="2">Name</th>
-                    <th rowspan="2">Department</th>
-                    <th rowspan="2">Role</th>
-                    <th colspan="7" class="text-center bg-primary text-white">Recent Attendance (Last 7 Days)</th>
-                </tr>
-                <tr>
+                    <th>Name</th>
+                    <th>Dept</th>
+                    <th>Role</th>
                     {% for date in recent_dates %}
                     <th class="text-center small">{{ date.strftime('%d/%m') }}</th>
                     {% endfor %}
@@ -41,10 +77,10 @@
                     {% for date in recent_dates %}
                     <td class="text-center">
                         {% if user_attendance_map[user.id][date.isoformat()] %}
-                        <i class="fas fa-check-circle text-success"
-                            title="Present at {{ user_attendance_map[user.id][date.isoformat()] }}"></i>
+                        <span title="Present at {{ user_attendance_map[user.id][date.isoformat()] }}"
+                              style="color:#16a34a; font-size:1.1rem;">✔</span>
                         {% else %}
-                        <i class="fas fa-times-circle text-light"></i>
+                        <span style="color:#e5e7eb; font-size:1.1rem;">✗</span>
                         {% endif %}
                     </td>
                     {% endfor %}
@@ -56,18 +92,60 @@
     </div>
 </div>
 
-<div class="mt-4 row">
-    <div class="col-md-4 mb-3">
-        <div class="glass-card border-start border-primary border-4">
-            <h6 class="text-muted">Total Users</h6>
-            <h3>{{ users|length - 1 }}</h3>
-        </div>
+{# ── User Management Table ── #}
+<div class="glass-card">
+    <div class="section-head">
+        <h5>User Management</h5>
     </div>
-    <div class="col-md-4 mb-3">
-        <div class="glass-card border-start border-success border-4">
-            <h6 class="text-muted">Today's Attendance</h6>
-            <h3>{{ today_count }}</h3>
-        </div>
+    <div class="table-responsive">
+        <table class="table table-hover table-modern align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Department</th>
+                    <th class="text-center">Face Status</th>
+                    <th class="text-center">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                {% if user.role != 'admin' %}
+                <tr>
+                    <td class="fw-semibold">{{ user.name }}</td>
+                    <td class="small text-muted">{{ user.email }}</td>
+                    <td><span class="badge {% if user.role == 'teacher' %}bg-warning text-dark{% else %}bg-primary{% endif %}">{{ user.role }}</span></td>
+                    <td>{{ user.department }}</td>
+                    <td class="text-center">
+                        {% if user.face_registered %}
+                        <span class="badge bg-success">✔ Registered</span>
+                        {% else %}
+                        <span class="badge bg-danger">✗ Pending</span>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <div class="d-flex gap-1 justify-content-center">
+                            {% if user.face_registered %}
+                            <form method="POST" action="{{ url_for('admin_clear_face', user_id=user.id) }}"
+                                  onsubmit="return confirm('Clear face data for {{ user.name }}?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button class="btn btn-sm btn-outline-warning" title="Clear Face">🗑 Face</button>
+                            </form>
+                            {% endif %}
+                            <form method="POST" action="{{ url_for('admin_delete_user', user_id=user.id) }}"
+                                  onsubmit="return confirm('Permanently delete {{ user.name }}? This cannot be undone.')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                <button class="btn btn-sm btn-outline-danger" title="Delete User">🗑 Delete</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
+</div>
 </div>
 {% endblock %}

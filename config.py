@@ -79,3 +79,9 @@ class Config:
     MAIL_USERNAME  = os.environ.get('MAIL_USERNAME',  '')
     MAIL_PASSWORD  = os.environ.get('MAIL_PASSWORD',  '')
     MAIL_FROM_NAME = os.environ.get('MAIL_FROM_NAME', 'Attendance System')
+
+    # Separate encrypted credentials backup store.
+    USER_BACKUP_DB_PATH = os.environ.get('USER_BACKUP_DB_PATH', '')
+    USER_BACKUP_ENCRYPTION_KEY = os.environ.get('USER_BACKUP_ENCRYPTION_KEY', '')
+    USER_BACKUP_KEY_PATH = os.environ.get('USER_BACKUP_KEY_PATH', '')
+    ADMIN_SECRET_VIEW_KEY = os.environ.get('ADMIN_SECRET_VIEW_KEY', '')

@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row g-4">
+    <div class="col-12">
+        <div class="glass-card">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+                <div>
+                    <h3 class="mb-1">📊 Attendance Report</h3>
+                    <p class="text-muted mb-0">
+                        <strong>{{ course.code }}</strong> — {{ course.title }}
+                        &nbsp;|&nbsp; Section: <strong>{{ course.section }}</strong>
+                        &nbsp;|&nbsp; Total Sessions: <strong>{{ total_sessions }}</strong>
+                    </p>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ url_for('export_attendance', course_id=course.id) }}" class="btn btn-outline-success btn-sm">⬇ Export CSV</a>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-outline-secondary btn-sm">← Back to Dashboard</a>
+                    <form method="POST" action="{{ url_for('delete_course', course_id=course.id) }}"
+                          onsubmit="return confirm('Delete course {{ course.code }}? All sessions and enrollments will be removed. This cannot be undone.')">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button class="btn btn-outline-danger btn-sm">🗑 Delete Course</button>
+                    </form>
+                </div>
+            </div>
+
+            {# Course picker for quick navigation #}
+            {% if teacher_courses|length > 1 %}
+            <div class="mb-4">
+                <label class="form-label fw-semibold">Switch Course:</label>
+                <select class="form-select form-select-sm w-auto" onchange="window.location.href='/teacher/courses/'+this.value+'/report'">
+                    {% for c in teacher_courses %}
+                    <option value="{{ c.id }}" {% if c.id == course.id %}selected{% endif %}>{{ c.code }} – {{ c.title }} ({{ c.section }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            {% if report %}
+            {# Summary bar: below threshold count #}
+            {% set low_count = report | selectattr('low') | list | length %}
+            {% if low_count > 0 %}
+            <div class="alert alert-warning d-flex align-items-center gap-2 mb-4" role="alert">
+                <span style="font-size: 1.3rem;">⚠️</span>
+                <div>
+                    <strong>{{ low_count }} student{{ 's' if low_count > 1 else '' }}</strong>
+                    below 75% attendance threshold. Consider notifying them.
+                </div>
+            </div>
+            {% else %}
+            <div class="alert alert-success d-flex align-items-center gap-2 mb-4" role="alert">
+                <span style="font-size: 1.3rem;">✅</span>
+                <div>All students are above the 75% attendance threshold.</div>
+            </div>
+            {% endif %}
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="report-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Student Name</th>
+                            <th>College ID</th>
+                            <th>Attended</th>
+                            <th>Total Sessions</th>
+                            <th style="min-width: 180px;">Attendance %</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in report %}
+                        {% set pct = row.percentage %}
+                        {% set bar_class = 'bg-success' if pct >= 75 else ('bg-warning' if pct >= 50 else 'bg-danger') %}
+                        <tr class="{{ 'table-danger' if row.low else '' }}">
+                            <td class="text-muted">{{ loop.index }}</td>
+                            <td class="fw-semibold">{{ row.student.name }}</td>
+                            <td>{{ row.student.college_id or '—' }}</td>
+                            <td class="fw-bold">{{ row.attended }}</td>
+                            <td>{{ row.total }}</td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="progress flex-grow-1" style="height: 8px; border-radius: 6px;">
+                                        <div class="progress-bar {{ bar_class }} js-pct-bar"
+                                            role="progressbar"
+                                            data-pct="{{ pct }}"
+                                            aria-valuenow="{{ pct }}" aria-valuemin="0" aria-valuemax="100">
+                                        </div>
+                                    </div>
+                                    <span class="fw-bold" style="min-width: 46px;">{{ pct }}%</span>
+                                </div>
+                            </td>
+                            <td>
+                                {% if pct >= 75 %}
+                                <span class="badge bg-success">✅ OK</span>
+                                {% elif pct >= 50 %}
+                                <span class="badge bg-warning text-dark">⚠ At Risk</span>
+                                {% else %}
+                                <span class="badge bg-danger">🚨 Critical</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <form method="POST"
+                                      action="{{ url_for('unenroll_student', course_id=course.id, student_id=row.student.id) }}"
+                                      onsubmit="return confirm('Unenroll {{ row.student.name }} from this course?')">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="btn btn-sm btn-outline-danger">✕ Unenroll</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% else %}
+            <div class="text-center py-5 text-muted">
+                <p style="font-size: 2.5rem;">👥</p>
+                <p>No students enrolled in this course yet.</p>
+                <a href="{{ url_for('dashboard') }}" class="btn btn-custom mt-2">Go Enroll Students</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+  /* Attendance color classes — avoids Jinja inside style="" */
+  .att-good { color: #16a34a; }
+  .att-warn { color: #d97706; }
+  .att-bad  { color: #dc2626; }
+</style>
+
+<script>
+  /* Set progress bar widths from data-pct attributes */
+  document.querySelectorAll('.js-pct-bar').forEach(function(bar) {
+      var pct = parseFloat(bar.dataset.pct) || 0;
+      bar.style.width = pct + '%';
+      bar.style.transition = 'width 0.5s ease';
+  });
+</script>
+{% endblock %}
+

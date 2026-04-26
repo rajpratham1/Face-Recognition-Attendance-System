@@ -85,8 +85,8 @@ Important variables:
 
 ## Development Notes
 
-- Primary dev DB path: `instance/attendance.db`
-- Encrypted backup DB path (default): `instance/userbackup.db`
+- Primary dev Db path: `instance/attendance.db`
+- Encrypted backup Db path (default): `instance/userbackup.db`
 - Backup encryption key path (default): `instance/userbackup.key`
 
 ## License

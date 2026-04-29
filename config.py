@@ -36,7 +36,11 @@ class Config:
     APP_PROGRAM_NAME = os.environ.get('APP_PROGRAM_NAME', 'Intel Digital Readiness Bootcamp')
     APP_GEOFENCE_LABEL = os.environ.get('APP_GEOFENCE_LABEL', 'authorized attendance zone')
     SECRET_KEY = os.environ.get('SECRET_KEY')
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///attendance.db')
+    
+    # Use absolute path for database to avoid confusion with multiple instance folders
+    _basedir = os.path.abspath(os.path.dirname(__file__))
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', f'sqlite:///{os.path.join(_basedir, "instance", "attendance.db")}')
+    
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     APP_TIMEZONE = os.environ.get('APP_TIMEZONE', 'Asia/Kolkata')
     FLASK_ENV = os.environ.get('FLASK_ENV', 'production').strip().lower()

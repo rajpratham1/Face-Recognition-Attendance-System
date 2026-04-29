@@ -85,3 +85,13 @@ class Config:
     MAIL_FROM_NAME = os.environ.get('MAIL_FROM_NAME', 'Attendance System')
     PASSWORD_RESET_SALT = os.environ.get('PASSWORD_RESET_SALT', 'password-reset')
     PASSWORD_RESET_TOKEN_MAX_AGE_MINUTES = _env_int('PASSWORD_RESET_TOKEN_MAX_AGE_MINUTES', 30)
+
+    # ─── Liveness Detection Settings ────────────────────────────────────────────
+    # Enable/disable liveness detection for face verification
+    LIVENESS_DETECTION_ENABLED = _env_bool('LIVENESS_DETECTION_ENABLED', True)
+    LIVENESS_REQUIRE_BLINK = _env_bool('LIVENESS_REQUIRE_BLINK', True)
+    LIVENESS_REQUIRE_HEAD_MOVEMENT = _env_bool('LIVENESS_REQUIRE_HEAD_MOVEMENT', True)
+    LIVENESS_TIMEOUT_SECONDS = _env_int('LIVENESS_TIMEOUT_SECONDS', 15)
+    LIVENESS_BLINK_THRESHOLD = _env_float('LIVENESS_BLINK_THRESHOLD', 0.25)
+    LIVENESS_MOVEMENT_THRESHOLD = _env_int('LIVENESS_MOVEMENT_THRESHOLD', 15)
+    LIVENESS_QUALITY_THRESHOLD = _env_float('LIVENESS_QUALITY_THRESHOLD', 0.6)

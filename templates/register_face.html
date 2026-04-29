@@ -100,6 +100,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="{{ url_for('static', filename='liveness.js') }}"></script>
 <script>
   const video = document.getElementById('video-preview');
   const captureBtn = document.getElementById('capture-btn');
@@ -119,6 +120,7 @@
   let streamReady = false;
   let modelReady = false;
   let scanning = false;
+  let livenessDetector = null;
 
   function setStatus(msg, cls = 'text-primary') {
     statusText.innerText = msg;
@@ -170,11 +172,75 @@
     scanning = true;
     captureBtn.disabled = true;
     dupAlert.style.display = 'none';
-    setStatus('Scanning Face…');
+    
+    // Initialize liveness detector
+    livenessDetector = new LivenessDetector({
+      requireBlink: true,
+      requireHeadMovement: true,
+      timeoutSeconds: 15,
+      onProgress: (data) => {
+        setStatus(data.message, 'text-info');
+      },
+      onTimeout: () => {
+        setStatus('⏱️ Liveness check timed out. Please try again.', 'text-warning');
+        scanning = false;
+        updateCaptureState();
+      }
+    });
 
-    // ── collect TOTAL_SAMPLES descriptors silently ───────────────────────
-    const descriptors = [];
-    for (let i = 0; i < TOTAL_SAMPLES; i++) {
+    livenessDetector.start();
+    setStatus('👁️ Look at camera and blink naturally', 'text-info');
+
+    // Start continuous liveness detection
+    const livenessInterval = setInterval(async () => {
+      if (!scanning) {
+        clearInterval(livenessInterval);
+        return;
+      }
+
+      try {
+        const detection = await faceapi.detectSingleFace(video)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        if (!detection) {
+          setStatus('No face detected. Position your face in frame.', 'text-warning');
+          return;
+        }
+
+        const result = await livenessDetector.processFrame([detection], video);
+
+        if (result.passed) {
+          clearInterval(livenessInterval);
+          setStatus('✅ Liveness verified! Capturing face...', 'text-success');
+          await captureFaceWithSamples(result.descriptor);
+        } else if (result.reason !== 'In progress') {
+          setStatus(result.instruction, 'text-warning');
+        }
+      } catch (error) {
+        console.error('Liveness detection error:', error);
+      }
+    }, 100); // Check every 100ms
+
+    // Timeout fallback
+    setTimeout(() => {
+      if (scanning) {
+        clearInterval(livenessInterval);
+        setStatus('⏱️ Verification timed out. Please try again.', 'text-warning');
+        scanning = false;
+        updateCaptureState();
+      }
+    }, 16000);
+  });
+
+  async function captureFaceWithSamples(initialDescriptor) {
+    setStatus('📸 Capturing multiple samples...', 'text-info');
+
+    // ── collect TOTAL_SAMPLES descriptors for robustness ───────────────────────
+    const descriptors = [initialDescriptor];
+    
+    for (let i = 1; i < TOTAL_SAMPLES; i++) {
+      await sleep(SAMPLE_DELAY);
       let det = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         det = await faceapi.detectSingleFace(video)
@@ -184,13 +250,12 @@
         await sleep(300);
       }
       if (!det) {
-        setStatus('No face detected. Please adjust lighting and try again.', 'text-warning');
+        setStatus('Lost face tracking. Please try again.', 'text-warning');
         scanning = false;
         updateCaptureState();
         return;
       }
       descriptors.push(Array.from(det.descriptor));
-      if (i < TOTAL_SAMPLES - 1) await sleep(SAMPLE_DELAY);
     }
 
     // ── average descriptors into one robust vector ───────────────────────
@@ -199,7 +264,7 @@
       for (let k = 0; k < 128; k++) avg[k] += d[k] / TOTAL_SAMPLES;
     }
 
-    setStatus('Processing…');
+    setStatus('🔄 Processing...', 'text-info');
 
     // ── send to server ───────────────────────────────────────────────────
     try {
@@ -211,7 +276,10 @@
           'X-CSRFToken': csrfToken,
           'X-Requested-With': 'XMLHttpRequest'
         },
-        body: JSON.stringify({ descriptor: avg })
+        body: JSON.stringify({ 
+          descriptor: avg,
+          liveness_verified: true 
+        })
       });
 
       let result;
@@ -233,10 +301,11 @@
         updateCaptureState();
       }
     } catch (err) {
+      console.error('Network error:', err);
       setStatus('Network error. Check connection and try again.', 'text-danger');
       scanning = false;
       updateCaptureState();
     }
-  });
+  }
 </script>
 {% endblock %}

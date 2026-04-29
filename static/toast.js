@@ -23,17 +23,10 @@ class ToastNotification {
             this.container = document.createElement('div');
             this.container.id = 'toast-container';
             this.container.className = 'toast-container';
-            // Force visibility with inline styles for debugging
-            this.container.style.cssText = 'position: fixed; top: 20px; right: 20px; z-index: 99999; display: flex; flex-direction: column; gap: 12px;';
             document.body.appendChild(this.container);
-            console.log('Toast container created and appended to body');
         } else {
             this.container = document.getElementById('toast-container');
-            console.log('Toast container already exists');
         }
-        
-        console.log('Toast container element:', this.container);
-        console.log('Toast container computed style:', window.getComputedStyle(this.container).display);
         
         this.initialized = true;
         
@@ -57,8 +50,6 @@ class ToastNotification {
             return null;
         }
         
-        console.log('Creating toast element:', type, message);
-        
         const toast = document.createElement('div');
         toast.className = `toast toast-${type} toast-enter`;
         
@@ -77,16 +68,9 @@ class ToastNotification {
             </div>
             <button class="toast-close" aria-label="Close">&times;</button>
         `;
-        
-        // Force inline styles for debugging
-        toast.style.cssText = 'display: flex !important; opacity: 1 !important; transform: translateX(0) scale(1) !important; background: white; padding: 14px 18px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); min-width: 300px; margin-bottom: 12px;';
 
         // Add to container
         this.container.appendChild(toast);
-        console.log('Toast added to container, element:', toast);
-        console.log('Container children:', this.container.children.length);
-        console.log('Toast computed display:', window.getComputedStyle(toast).display);
-        console.log('Toast computed opacity:', window.getComputedStyle(toast).opacity);
 
         // Force reflow to ensure animation triggers
         toast.offsetHeight;
@@ -95,7 +79,6 @@ class ToastNotification {
         setTimeout(() => {
             toast.classList.remove('toast-enter');
             toast.classList.add('toast-visible');
-            console.log('Toast animation triggered, classes:', toast.className);
         }, 10);
 
         // Close button handler

@@ -62,33 +62,16 @@
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-        <!-- Debug: Flash messages present -->
-        <div id="flash-debug" style="position:fixed; top:10px; right:10px; background:red; color:white; padding:10px; z-index:99999; border-radius:5px;">
-            Flash messages: {{ messages|length }}
-        </div>
         <script>
             // Convert flash messages to toast notifications
             document.addEventListener('DOMContentLoaded', function() {
-                console.log('DOMContentLoaded - Processing flash messages');
-                // Wait a bit for toast to initialize
                 setTimeout(function() {
-                    console.log('Toast object:', window.toast);
                     {% for category, message in messages %}
-                    console.log('Flash message:', '{{ category }}', '{{ message | safe }}');
                     const type = '{{ category }}' === 'danger' ? 'error' : '{{ category }}';
                     if (window.toast && window.toast.show) {
-                        console.log('Showing toast:', type, '{{ message | safe }}');
                         window.toast.show('{{ message | safe }}', type);
-                    } else {
-                        console.error('Toast not initialized:', '{{ message | safe }}');
-                        alert('{{ message | safe }}'); // Fallback
                     }
                     {% endfor %}
-                    // Remove debug indicator after 2 seconds
-                    setTimeout(function() {
-                        const debug = document.getElementById('flash-debug');
-                        if (debug) debug.remove();
-                    }, 2000);
                 }, 100);
             });
         </script>

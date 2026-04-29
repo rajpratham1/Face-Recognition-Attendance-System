@@ -32,19 +32,23 @@ def _env_bool(name, default):
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 class Config:
+    APP_NAME = os.environ.get('APP_NAME', 'Face Attendance')
+    APP_PROGRAM_NAME = os.environ.get('APP_PROGRAM_NAME', 'Intel Digital Readiness Bootcamp')
+    APP_GEOFENCE_LABEL = os.environ.get('APP_GEOFENCE_LABEL', 'authorized attendance zone')
     SECRET_KEY = os.environ.get('SECRET_KEY')
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///attendance.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     APP_TIMEZONE = os.environ.get('APP_TIMEZONE', 'Asia/Kolkata')
-    FLASK_ENV = os.environ.get('FLASK_ENV', 'production')
+    FLASK_ENV = os.environ.get('FLASK_ENV', 'production').strip().lower()
     DEBUG = FLASK_ENV == 'development'
+    ENFORCE_SECRET_KEY_IN_PRODUCTION = _env_bool('ENFORCE_SECRET_KEY_IN_PRODUCTION', True)
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
-    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', '0') == '1'
+    SESSION_COOKIE_SECURE = _env_bool('SESSION_COOKIE_SECURE', FLASK_ENV == 'production')
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SAMESITE = 'Lax'
-    REMEMBER_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', '0') == '1'
+    REMEMBER_COOKIE_SECURE = _env_bool('SESSION_COOKIE_SECURE', FLASK_ENV == 'production')
     WTF_CSRF_TIME_LIMIT = None
     RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
     RATELIMIT_HEADERS_ENABLED = True
@@ -67,7 +71,7 @@ class Config:
     INVERTIS_LNG = _env_float('INVERTIS_LNG', 79.461063)
     ALLOWED_RADIUS_METERS = _env_int('ALLOWED_RADIUS_METERS', 100)
     SESSION_LOCATION_RADIUS_METERS = _env_int('SESSION_LOCATION_RADIUS_METERS', 50)
-    GEOFENCE_ENFORCED = _env_bool('GEOFENCE_ENFORCED', False)
+    GEOFENCE_ENFORCED = _env_bool('GEOFENCE_ENFORCED', True)
 
     # ─── Email Notification Settings ────────────────────────────────────────────
     # Set these in your .env file to enable attendance email notifications.
@@ -79,9 +83,5 @@ class Config:
     MAIL_USERNAME  = os.environ.get('MAIL_USERNAME',  '')
     MAIL_PASSWORD  = os.environ.get('MAIL_PASSWORD',  '')
     MAIL_FROM_NAME = os.environ.get('MAIL_FROM_NAME', 'Attendance System')
-
-    # Separate encrypted credentials backup store.
-    USER_BACKUP_DB_PATH = os.environ.get('USER_BACKUP_DB_PATH', '')
-    USER_BACKUP_ENCRYPTION_KEY = os.environ.get('USER_BACKUP_ENCRYPTION_KEY', '')
-    USER_BACKUP_KEY_PATH = os.environ.get('USER_BACKUP_KEY_PATH', '')
-    ADMIN_SECRET_VIEW_KEY = os.environ.get('ADMIN_SECRET_VIEW_KEY', '')
+    PASSWORD_RESET_SALT = os.environ.get('PASSWORD_RESET_SALT', 'password-reset')
+    PASSWORD_RESET_TOKEN_MAX_AGE_MINUTES = _env_int('PASSWORD_RESET_TOKEN_MAX_AGE_MINUTES', 30)

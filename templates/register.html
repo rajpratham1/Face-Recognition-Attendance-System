@@ -5,20 +5,13 @@
     <div class="col-lg-6">
         <div class="glass-card reveal-up">
             <h2 class="text-center mb-2">Create Your Account</h2>
-            <p class="text-center text-muted mb-4">Choose role and complete registration for attendance access.</p>
+            <p class="text-center text-muted mb-4">Student registration is open here. Teacher and admin accounts are created by administrators.</p>
             <form method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="role" value="student">
                 <div class="mb-3">
                     <label class="form-label">Full Name</label>
                     <input type="text" name="name" class="form-control" required placeholder="Your full name">
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">Role</label>
-                    <select name="role" class="form-select" required>
-                        <option value="student">Student</option>
-                        <option value="teacher">Teacher</option>
-                    </select>
                 </div>
 
                 <div class="mb-3">
@@ -104,24 +97,12 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const roleSelect = document.querySelector('select[name="role"]');
     const studentFieldsWrap = document.getElementById('student-extra-fields');
     const studentInputs = studentFieldsWrap.querySelectorAll('input, select');
     const passwordInput = document.getElementById('register-password');
     const togglePassword = document.getElementById('toggle-register-password');
-
-    function toggleStudentFields() {
-        if (roleSelect.value === 'student') {
-            studentFieldsWrap.style.display = 'block';
-            studentInputs.forEach(input => input.setAttribute('required', 'required'));
-        } else {
-            studentFieldsWrap.style.display = 'none';
-            studentInputs.forEach(input => input.removeAttribute('required'));
-        }
-    }
-
-    roleSelect.addEventListener('change', toggleStudentFields);
-    toggleStudentFields(); // Initialize on load
+    studentFieldsWrap.style.display = 'block';
+    studentInputs.forEach(input => input.setAttribute('required', 'required'));
 
     if (passwordInput && togglePassword) {
         togglePassword.addEventListener('click', function() {

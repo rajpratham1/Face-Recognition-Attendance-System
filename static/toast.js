@@ -50,6 +50,8 @@ class ToastNotification {
             return null;
         }
         
+        console.log('Creating toast element:', type, message);
+        
         const toast = document.createElement('div');
         toast.className = `toast toast-${type} toast-enter`;
         
@@ -71,11 +73,17 @@ class ToastNotification {
 
         // Add to container
         this.container.appendChild(toast);
+        console.log('Toast added to container, element:', toast);
+        console.log('Container children:', this.container.children.length);
+
+        // Force reflow to ensure animation triggers
+        toast.offsetHeight;
 
         // Trigger animation
         setTimeout(() => {
             toast.classList.remove('toast-enter');
             toast.classList.add('toast-visible');
+            console.log('Toast animation triggered, classes:', toast.className);
         }, 10);
 
         // Close button handler

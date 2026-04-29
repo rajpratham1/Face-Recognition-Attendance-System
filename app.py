@@ -1924,17 +1924,25 @@ def login():
         password = request.form.get("password", "")
         
         app.logger.info(f"Login attempt for email: {email}")
+        app.logger.info(f"Password length: {len(password)}")
         user = User.query.filter_by(email=email).first()
 
-        if user and check_password_hash(user.password_hash, password):
-            login_user(user)
-            app.logger.info(f"Login successful for: {email}")
-            flash("Login successful!", "success")
-            return redirect(url_for("dashboard"))
+        if user:
+            app.logger.info(f"User found: {user.email}")
+            password_match = check_password_hash(user.password_hash, password)
+            app.logger.info(f"Password match result: {password_match}")
+            
+            if password_match:
+                login_user(user)
+                app.logger.info(f"Login successful for: {email}")
+                flash("Login successful!", "success")
+                return redirect(url_for("dashboard"))
+        else:
+            app.logger.warning(f"User not found: {email}")
         
         app.logger.warning(f"Login failed for: {email} - Invalid credentials")
         flash("Invalid email or password. Please try again.", "danger")
-        return redirect(url_for("login"))  # Redirect to login page to show flash message
+        return redirect(url_for("login"))
 
     return render_template("login.html")
 

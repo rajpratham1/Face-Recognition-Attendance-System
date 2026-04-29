@@ -1934,6 +1934,7 @@ def login():
         
         app.logger.warning(f"Login failed for: {email} - Invalid credentials")
         flash("Invalid email or password. Please try again.", "danger")
+        return redirect(url_for("login"))  # Redirect to login page to show flash message
 
     return render_template("login.html")
 

@@ -67,7 +67,7 @@ class Config:
     INVERTIS_LNG = _env_float('INVERTIS_LNG', 79.461063)
     ALLOWED_RADIUS_METERS = _env_int('ALLOWED_RADIUS_METERS', 100)
     SESSION_LOCATION_RADIUS_METERS = _env_int('SESSION_LOCATION_RADIUS_METERS', 50)
-    GEOFENCE_ENFORCED = _env_bool('GEOFENCE_ENFORCED', FLASK_ENV != 'development')
+    GEOFENCE_ENFORCED = _env_bool('GEOFENCE_ENFORCED', False)
 
     # ─── Email Notification Settings ────────────────────────────────────────────
     # Set these in your .env file to enable attendance email notifications.

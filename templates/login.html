@@ -19,6 +19,9 @@
                         <button type="button" class="btn btn-outline-secondary" id="toggle-login-password">Show</button>
                     </div>
                 </div>
+                <div class="d-flex justify-content-end mb-3">
+                    <a class="small" href="{{ url_for('forgot_password') }}">Forgot password?</a>
+                </div>
                 <button type="submit" class="btn btn-custom w-100 py-3">Login to Dashboard</button>
             </form>
             <p class="text-center mt-3 small">Need an account? <a href="{{ url_for('register') }}">Create one</a></p>

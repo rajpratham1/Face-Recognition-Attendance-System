@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Face Attendance System</title>
+    <title>{{ app_name }}</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
@@ -26,8 +26,8 @@
     <nav class="navbar navbar-expand-lg sticky-top mb-4">
         <div class="container">
             <a class="navbar-brand brand-wrap" href="/">
-                <img src="{{ url_for('static', filename='logo.svg') }}" alt="Face Attendance Logo" class="brand-logo">
-                <span class="brand-text">Face Attendance</span>
+                <img src="{{ url_for('static', filename='logo.svg') }}" alt="{{ app_name }} Logo" class="brand-logo">
+                <span class="brand-text">{{ app_name }}</span>
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
@@ -80,12 +80,12 @@
     <div id="geofence-blocker" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.95); z-index:999999; color:white; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; backdrop-filter:blur(10px);">
         <i class="fas fa-map-marker-alt mb-3" style="font-size: 3rem; color: #ef4444;"></i>
         <h2>🚫 Access Restricted</h2>
-        <p class="mt-2 text-light" style="max-width: 400px; font-size: 1.1rem;">This Face Attendance System is <strong>Strictly Geofenced</strong>.</p>
-        <p class="text-secondary" style="max-width: 400px; font-size: 0.95rem;">You must be physically inside the Invertis University Campus to access or use any feature of this portal.</p>
+        <p class="mt-2 text-light" style="max-width: 400px; font-size: 1.1rem;">This {{ app_name }} portal is <strong>Strictly Geofenced</strong>.</p>
+        <p class="text-secondary" style="max-width: 400px; font-size: 0.95rem;">You must be physically inside the {{ app_geofence_label }} to access or use any feature of this portal.</p>
         <div id="geofence-debug" class="mt-3 p-3 w-100" style="max-width: 400px; background: rgba(255,255,255,0.05); border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); font-family: monospace; font-size: 0.85rem; color: #fbbf24;">
             Initiating secure GPS scan...
         </div>
-        <button onclick="window.location.reload()" class="btn btn-outline-light mt-4 px-4 py-2" style="border-radius: 8px;">Retry Location Ping</button>
+        <button id="geofence-retry-btn" class="btn btn-outline-light mt-4 px-4 py-2" style="border-radius: 8px;">Retry Location Ping</button>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -130,7 +130,7 @@
                             blocker.style.display = 'none';
                             document.body.style.overflow = 'auto'; 
                         } else {
-                            debugText.innerHTML = `<span class='text-danger'>✖ Access Blocked!</span><br><br>You are <strong>${distance.toFixed(1)} meters</strong> away from campus.<br>Maximum allowed distance: <strong>${ALLOWED_RADIUS}m</strong>.`;
+                            debugText.innerHTML = `<span class='text-danger'>✖ Access Blocked!</span><br><br>You are <strong>${distance.toFixed(1)} meters</strong> away from the allowed zone.<br>Maximum allowed distance: <strong>${ALLOWED_RADIUS}m</strong>.`;
                         }
                     },
                     (error) => {
@@ -147,6 +147,11 @@
 
             enforceStrictGeofence();
         })();
+        
+        // Event listener for retry button (security: no inline onclick)
+        document.getElementById('geofence-retry-btn')?.addEventListener('click', function() {
+            window.location.reload();
+        });
     </script>
 </body>
 </html>

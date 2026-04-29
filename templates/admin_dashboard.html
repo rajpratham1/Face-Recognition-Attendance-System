@@ -12,9 +12,9 @@
         <div>
             <span class="hero-kicker">Administrator</span>
             <h2 class="mb-1">Admin Attendance Console</h2>
-            <p class="mb-0" style="opacity:.9;">Invertis University - Full Platform View</p>
+            <p class="mb-0" style="opacity:.9;">{{ app_program_name }} - Full Platform View</p>
         </div>
-        <button class="btn btn-hero-action" onclick="window.print()">🖨 Print Report</button>
+        <button id="admin-print-btn" class="btn btn-hero-action">🖨 Print Report</button>
     </div>
 </div>
 
@@ -129,14 +129,14 @@
                             <a href="{{ url_for('admin_edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary" title="Edit User">✏ Edit</a>
                             <a href="{{ url_for('admin_change_user_role', user_id=user.id) }}" class="btn btn-sm btn-outline-dark" title="Change Role">⇄ Role</a>
                             {% if user.face_registered %}
-                            <form method="POST" action="{{ url_for('admin_clear_face', user_id=user.id) }}"
-                                  onsubmit="return confirm('Clear face data for {{ user.name }}?')">
+                            <form method="POST" action="{{ url_for('admin_clear_face', user_id=user.id) }}" style="display: inline;"
+                                  data-confirm="Clear face data for {{ user.name }}?">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button class="btn btn-sm btn-outline-warning" title="Clear Face">🗑 Face</button>
                             </form>
                             {% endif %}
-                            <form method="POST" action="{{ url_for('admin_delete_user', user_id=user.id) }}"
-                                  onsubmit="return confirm('Permanently delete {{ user.name }}? This cannot be undone.')">
+                            <form method="POST" action="{{ url_for('admin_delete_user', user_id=user.id) }}" style="display: inline;"
+                                  data-confirm="Permanently delete {{ user.name }}? This cannot be undone.">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button class="btn btn-sm btn-outline-danger" title="Delete User">🗑 Delete</button>
                             </form>
@@ -150,4 +150,22 @@
     </div>
 </div>
 </div>
+{% endblock %}
+
+{% block footer %}
+<script>
+    // Event listeners for admin buttons (security: no inline onclick)
+    document.getElementById('admin-print-btn')?.addEventListener('click', function() {
+        window.print();
+    });
+    
+    // Confirm dialogs for destructive actions
+    document.querySelectorAll('form[data-confirm]').forEach(form => {
+        form.addEventListener('submit', function(e) {
+            if (!confirm(this.getAttribute('data-confirm'))) {
+                e.preventDefault();
+            }
+        });
+    });
+</script>
 {% endblock %}

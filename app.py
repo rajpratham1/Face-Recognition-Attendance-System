@@ -1,6 +1,5 @@
 import csv
 from collections import defaultdict
-import hmac
 import hashlib
 import io
 import json
@@ -17,14 +16,14 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf
 from geopy.distance import geodesic
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from config import Config
 from firebase_service import init_firebase, sync_attendance_attempt, sync_session_attendance
-from email_service import send_attendance_email  # ← Email notification feature
-from user_backup_service import backup_user_credentials, ensure_backup_schema, list_decrypted_user_credentials
+from email_service import send_attendance_email, send_password_reset_email
 from models import (
     Attendance,
     AttendanceAttempt,
@@ -39,7 +38,9 @@ from models import (
 app = Flask(__name__)
 app.config.from_object(Config)
 if not app.config.get("SECRET_KEY"):
-    # Stable dev fallback; set SECRET_KEY in env for production.
+    if app.config.get("FLASK_ENV") == "production" and app.config.get("ENFORCE_SECRET_KEY_IN_PRODUCTION", True):
+        raise RuntimeError("SECRET_KEY must be configured before starting the app in production.")
+    # Stable dev fallback for local development.
     app.config["SECRET_KEY"] = "dev-insecure-change-me"
 
 csrf = CSRFProtect(app)
@@ -70,6 +71,9 @@ def inject_template_globals():
     }
     return {
         "csrf_token": generate_csrf,
+        "app_name": app.config["APP_NAME"],
+        "app_program_name": app.config["APP_PROGRAM_NAME"],
+        "app_geofence_label": app.config["APP_GEOFENCE_LABEL"],
         "app_timezone": app.config["APP_TIMEZONE"],
         "firebase_web_config": firebase_web_config,
         "firebase_enabled": app.extensions.get("firebase_enabled", False),
@@ -102,6 +106,34 @@ def handle_csrf_error(error):
     return redirect(url_for("index"))
 
 
+@app.errorhandler(404)
+def handle_404(error):
+    """Handle 404 Not Found errors gracefully."""
+    if request.path.startswith("/api/"):
+        return jsonify({"success": False, "message": "Resource not found."}), 404
+    flash("Page not found.", "warning")
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(403)
+def handle_403(error):
+    """Handle 403 Forbidden errors gracefully."""
+    if request.path.startswith("/api/"):
+        return jsonify({"success": False, "message": "Access denied."}), 403
+    flash("Access denied.", "danger")
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(500)
+def handle_500(error):
+    """Handle 500 Internal Server errors gracefully."""
+    app.logger.error("500 error: %s", str(error), exc_info=True)
+    if request.path.startswith("/api/") or request.is_json:
+        return jsonify({"success": False, "message": "Server error. Please try again later."}), 500
+    flash("An unexpected error occurred. Please try again.", "danger")
+    return redirect(url_for("index"))
+
+
 def now_utc_naive():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -112,6 +144,53 @@ def now_local():
 
 def today_local_date():
     return now_local().date()
+
+
+def password_validation_error(password):
+    if len(password) < 8:
+        return "Password must be at least 8 characters long."
+    if not any(c.isdigit() for c in password):
+        return "Password must contain at least one number."
+    if not any(c.isupper() for c in password):
+        return "Password must contain at least one uppercase letter."
+    return None
+
+
+def password_reset_serializer():
+    return URLSafeTimedSerializer(app.config["SECRET_KEY"])
+
+
+def password_reset_signature(user):
+    payload = f"{user.id}:{user.email}:{user.password_hash}"
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def generate_password_reset_token(user):
+    return password_reset_serializer().dumps(
+        {"user_id": user.id, "sig": password_reset_signature(user)},
+        salt=app.config["PASSWORD_RESET_SALT"],
+    )
+
+
+def get_user_from_reset_token(token):
+    try:
+        data = password_reset_serializer().loads(
+            token,
+            salt=app.config["PASSWORD_RESET_SALT"],
+            max_age=int(app.config["PASSWORD_RESET_TOKEN_MAX_AGE_MINUTES"]) * 60,
+        )
+    except (BadSignature, SignatureExpired, TypeError, ValueError):
+        return None
+
+    user_id = data.get("user_id")
+    user = db.session.get(User, int(user_id)) if user_id is not None else None
+    if not user:
+        return None
+
+    signature = data.get("sig", "")
+    if not secrets.compare_digest(signature, password_reset_signature(user)):
+        return None
+    return user
 
 
 def is_within_invertis(lat, lng):
@@ -130,7 +209,7 @@ def is_within_invertis(lat, lng):
     distance = geodesic(user_location, invertis_location).meters
     
     # ── LOGGING DISTANCE FOR DEBUGGING ──
-    app.logger.info(f"Geofence Check: User Location {user_location} -> Distance to campus: {distance:.2f} meters")
+    app.logger.info(f"Geofence Check: User Location {user_location} -> Distance to allowed zone: {distance:.2f} meters")
     
     return distance <= app.config["ALLOWED_RADIUS_METERS"]
 
@@ -378,15 +457,25 @@ def ensure_schema_compatibility():
         if "semester" not in users_columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN semester VARCHAR(10)"))
 
-    # Ensure separate encrypted backup DB table exists.
-    ensure_backup_schema(app)
-
-
 @app.after_request
 def add_header(response):
+    """Add security headers and cache control to all responses."""
+    # Prevent caching of sensitive content (override for static assets if needed)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '-1'
+    
+    # Security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'  # Prevent MIME type sniffing
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'  # Prevent clickjacking
+    response.headers['X-XSS-Protection'] = '1; mode=block'  # Enable XSS protection
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'  # Control referrer info
+    response.headers['Permissions-Policy'] = 'geolocation=(self), microphone=(), camera=(self)'  # Feature permissions
+    
+    # Strict Transport Security (only in production)
+    if app.config.get('FLASK_ENV') == 'production':
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
     return response
 
 
@@ -449,25 +538,22 @@ def kiosk(session_id):
 @app.route("/api/kiosk_data/<int:session_id>")
 @login_required
 def kiosk_data(session_id):
-    """Returns JSON with all enrolled students and their face descriptors for in-browser matching."""
+    """Returns kiosk roster data without exposing stored biometric templates to the browser."""
     if current_user.role not in ("teacher", "admin"):
         return jsonify({"success": False, "message": "Unauthorized"}), 403
 
     session = ClassSession.query.filter_by(id=session_id, teacher_id=current_user.id).first_or_404()
 
-    # Get enrolled students who have registered faces
     enrolled_students = (
         User.query.join(Enrollment, Enrollment.student_id == User.id)
         .filter(
             Enrollment.course_id == session.course_id,
             User.role == "student",
-            User.face_registered.is_(True),
-            User.face_encoding.isnot(None),
         )
+        .order_by(User.name.asc())
         .all()
     )
 
-    # Get already-marked student IDs for this session
     marked_ids = {
         row.student_id
         for row in SessionAttendance.query.filter_by(session_id=session_id).all()
@@ -475,18 +561,13 @@ def kiosk_data(session_id):
 
     students_data = []
     for student in enrolled_students:
-        try:
-            descriptor = json.loads(student.face_encoding)
-            if isinstance(descriptor, list) and len(descriptor) == 128:
-                students_data.append({
-                    "id": student.id,
-                    "name": student.name,
-                    "college_id": student.college_id or "",
-                    "descriptor": descriptor,
-                    "already_marked": student.id in marked_ids,
-                })
-        except Exception:
-            continue
+        students_data.append({
+            "id": student.id,
+            "name": student.name,
+            "college_id": student.college_id or "",
+            "already_marked": student.id in marked_ids,
+            "face_ready": bool(student.face_registered and student.face_encoding),
+        })
 
     now = now_utc_naive()
     is_active = bool(session.is_active and session.starts_at <= now <= session.ends_at)
@@ -508,14 +589,14 @@ def kiosk_data(session_id):
 @login_required
 @limiter.limit("120 per minute")
 def kiosk_mark():
-    """Marks a student present via the kiosk. Called by teacher-operated laptop so geofence is bypassed."""
+    """Marks a student present via the kiosk after server-side face verification."""
     if current_user.role not in ("teacher", "admin"):
         return jsonify({"success": False, "message": "Unauthorized"}), 403
 
     data = request.json or {}
     session_id = data.get("session_id")
     student_id = data.get("student_id")
-    face_distance = data.get("face_distance")
+    descriptor = data.get("descriptor")
 
     if not session_id or not student_id:
         return jsonify({"success": False, "message": "Missing session or student ID."}), 400
@@ -532,10 +613,39 @@ def kiosk_mark():
     if not student:
         return jsonify({"success": False, "message": "Student not found."}), 404
 
+    enrollment = Enrollment.query.filter_by(course_id=session.course_id, student_id=student.id).first()
+    if not enrollment:
+        return jsonify({"success": False, "message": "Student is not enrolled for this course."}), 403
+
+    if not student.face_registered or not student.face_encoding:
+        return jsonify({"success": False, "message": "Student has not completed face registration."}), 400
+
     # Prevent duplicate marking
     already_marked = SessionAttendance.query.filter_by(session_id=session_id, student_id=student_id).first()
     if already_marked:
         return jsonify({"success": False, "already_marked": True, "message": f"{student.name} already marked."})
+
+    if not isinstance(descriptor, list) or len(descriptor) != 128:
+        return jsonify({"success": False, "message": "A valid face scan is required."}), 400
+
+    try:
+        normalized_descriptor = [float(v) for v in descriptor]
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Face scan contained invalid values."}), 400
+
+    if any(not isfinite(v) for v in normalized_descriptor):
+        return jsonify({"success": False, "message": "Face scan contained invalid values."}), 400
+
+    try:
+        known_encoding = np.array(json.loads(student.face_encoding), dtype=float)
+    except Exception:
+        app.logger.exception("Corrupt kiosk face encoding for student_id=%s", student.id)
+        return jsonify({"success": False, "message": "Stored face data is unavailable for this student."}), 500
+
+    unknown_encoding = np.array(normalized_descriptor, dtype=float)
+    face_distance = float(np.linalg.norm(known_encoding - unknown_encoding))
+    if face_distance >= 0.55:
+        return jsonify({"success": False, "message": "Face verification failed for the selected student."}), 400
 
     ip_address = (request.headers.get("X-Forwarded-For", request.remote_addr) or "").split(",")[0].strip()[:64]
 
@@ -546,7 +656,7 @@ def kiosk_mark():
         longitude=session.location_lng,
         face_distance=face_distance,
         ip_address=ip_address,
-        user_agent="Kiosk-AutoScan/1.0",
+        user_agent="Kiosk-AssistedVerify/2.0",
     )
     db.session.add(entry)
 
@@ -565,9 +675,9 @@ def kiosk_mark():
         db.session.add(daily_entry)
 
     record_attempt(
-        session.id, student_id, True, "Kiosk auto-scan",
+        session.id, student_id, True, "Kiosk assisted verification",
         session.location_lat, session.location_lng, face_distance,
-        None, ip_address, "Kiosk-AutoScan/1.0"
+        None, ip_address, "Kiosk-AssistedVerify/2.0"
     )
     db.session.commit()
 
@@ -585,6 +695,7 @@ def kiosk_mark():
 @app.route("/register", methods=["GET", "POST"])
 @limiter.limit("20 per hour")
 def register():
+    """Register a new user account with face recognition setup."""
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
@@ -594,49 +705,74 @@ def register():
         year = request.form.get("year", "").strip()
         semester = request.form.get("semester", "").strip()
         password = request.form.get("password", "")
-        role = request.form.get("role", "student")
+        requested_role = request.form.get("role", "student").strip().lower()
+        role = "student"
         consent = request.form.get("consent") == "yes"
 
-        if role not in ["teacher", "student"]:
-            flash("Invalid role selected", "danger")
+        # Validate name
+        if not name or len(name) < 2 or len(name) > 100:
+            flash("Name must be between 2 and 100 characters.", "warning")
             return redirect(url_for("register"))
+        
+        # Validate email format (basic check)
+        if not email or "@" not in email or "." not in email:
+            flash("Please enter a valid email address.", "warning")
+            return redirect(url_for("register"))
+        
+        # Validate department
+        if not department or len(department) < 2:
+            flash("Department is required.", "warning")
+            return redirect(url_for("register"))
+        
+        # Public registration is student-only.
+        if requested_role not in ["", "student"]:
+            flash("Teacher and admin accounts are provisioned by administrators only.", "warning")
+            return redirect(url_for("register"))
+        
+        # Validate consent
         if not consent:
             flash("You must accept biometric and privacy consent to continue.", "warning")
             return redirect(url_for("register"))
-        if len(password) < 8:
-            flash("Password must be at least 8 characters long.", "warning")
+        
+        password_error = password_validation_error(password)
+        if password_error:
+            flash(password_error, "warning")
             return redirect(url_for("register"))
-        if not any(c.isdigit() for c in password):
-            flash("Password must contain at least one number.", "warning")
-            return redirect(url_for("register"))
+        
+        # Check for existing email
         if User.query.filter_by(email=email).first():
-            flash("Email already registered", "danger")
+            flash("Email already registered.", "danger")
             return redirect(url_for("register"))
-            
+        
+        # Validate student-specific fields
         if role == "student" and not (college_id and section and year and semester):
             flash("Students must provide College ID, Section, Year, and Semester.", "warning")
             return redirect(url_for("register"))
 
-        new_user = User(
-            name=name,
-            email=email,
-            department=department,
-            college_id=college_id if role == "student" else None,
-            section=section if role == "student" else None,
-            year=year if role == "student" else None,
-            semester=semester if role == "student" else None,
-            role=role,
-            password_hash=generate_password_hash(password, method="scrypt"),
-        )
-        db.session.add(new_user)
-        db.session.commit()
-
+        # Create new user
         try:
-            backup_user_credentials(app, new_user.id, new_user.email, password)
-        except Exception:
-            app.logger.exception("Encrypted credential backup failed for user_id=%s", new_user.id)
+            new_user = User(
+                name=name,
+                email=email,
+                department=department,
+                college_id=college_id if role == "student" else None,
+                section=section if role == "student" else None,
+                year=year if role == "student" else None,
+                semester=semester if role == "student" else None,
+                role=role,
+                password_hash=generate_password_hash(password, method="scrypt"),
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            app.logger.info("New user registered: email=%s, role=%s", email, role)
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error("Registration error: %s", str(e))
+            flash("Registration failed. Please try again.", "danger")
+            return redirect(url_for("register"))
 
         login_user(new_user)
+        flash("Registration successful! Please register your face to continue.", "success")
         return redirect(url_for("register_face"))
 
     return render_template("register.html")
@@ -651,10 +787,24 @@ def register_face():
 @app.route("/save_face", methods=["POST"])
 @login_required
 @limiter.limit("30 per hour")
-# This function saves user's face encoding after registration
-# Face data is stored as a 128-dimension vector
-# It also checks for duplicate faces across ALL users (any role)
 def save_face():
+    """
+    Save a user's facial encoding (128-dimensional vector).
+    
+    This function:
+    1. Validates the face descriptor format and values
+    2. Checks for duplicate faces across all users (prevents multi-account abuse)
+    3. Stores the face encoding in the database
+    
+    Returns:
+        - 200 with success if face saved
+        - 400 if validation fails
+        - 409 if duplicate face detected
+        - 500 if database save fails
+    """
+    # This function saves user's face encoding after registration
+    # Face data is stored as a 128-dimension vector
+    # It also checks for duplicate faces across ALL users (any role)
     data = request.json or {}
     descriptor = data.get("descriptor")
 
@@ -734,9 +884,20 @@ def save_face():
 @app.route("/mark_attendance", methods=["GET", "POST"])
 @login_required
 @limiter.limit("20 per minute")
-# This function handles attendance marking
-# It verifies face and location before marking attendance
 def mark_attendance():
+    """
+    Mark daily attendance with face verification and location check.
+    
+    For Students:
+    - Shows list of active class sessions
+    
+    For Teachers:
+    - Accepts POST requests with face descriptor and location
+    - Verifies user's face against stored encoding
+    - Validates user is within campus bounds
+    - Prevents duplicate attendance marking
+    - Sends email notification on success
+    """
     if not current_user.face_registered:
         flash("Please register your face first!", "warning")
         return redirect(url_for("register_face"))
@@ -751,9 +912,8 @@ def mark_attendance():
         lat = data.get("lat")
         lng = data.get("lng")
 
-# This function checks if user is inside campus using geolocation
         if not is_within_invertis(lat, lng):
-            return jsonify({"success": False, "message": "Attendance can only be marked within Invertis University campus!"}), 400
+            return jsonify({"success": False, "message": f"Attendance can only be marked within the {app.config['APP_GEOFENCE_LABEL']}!"}), 400
 
         today = today_local_date()
         existing = Attendance.query.filter_by(user_id=current_user.id, date=today).first()
@@ -879,7 +1039,7 @@ def create_session():
         return redirect(url_for("dashboard"))
 
     if not is_within_invertis(teacher_lat, teacher_lng):
-        flash("Go to the classroom inside campus before starting a live session.", "warning")
+        flash(f"Go to the classroom inside the {app.config['APP_GEOFENCE_LABEL']} before starting a live session.", "warning")
         return redirect(url_for("dashboard"))
 
     try:
@@ -972,9 +1132,30 @@ def active_sessions():
 @app.route("/api/session_attendance/mark", methods=["POST"])
 @login_required
 @limiter.limit("10 per minute")
-# This API endpoint marks attendance for a class session
-# It checks face, location, session status, and prevents duplicates
 def mark_session_attendance():
+    """
+    Mark attendance for a live class session via API endpoint.
+    
+    This endpoint:
+    1. Validates student enrollment in course
+    2. Checks session is currently active
+    3. Verifies student is within classroom geofence
+    4. Performs face recognition verification
+    5. Records attendance attempt and real face mismatch
+    6. Sends email notification on success
+    7. Logs device/IP information for security auditing
+    
+    Request JSON Parameters:
+        - session_id: ID of the class session
+        - descriptor: 128-dim face vector from face.js
+        - lat/lng: Student's current coordinates
+        - device_id: Browser device identifier (hashed to device_hash)
+    
+    Returns:
+        - 200 with success if attendance marked
+        - 400 if validation fails
+        - 403 if unauthorized
+    """
     if current_user.role != "student":
         return jsonify({"success": False, "message": "Only students can use session attendance."}), 403
 
@@ -1477,36 +1658,6 @@ def admin_clear_face(user_id):
 
 
 # ── Admin: Secret Credentials View (2-step check) ────────────────────────────
-@app.route("/admin/secret_credentials", methods=["GET", "POST"])
-@login_required
-def admin_secret_credentials():
-    if current_user.role != "admin":
-        flash("Admins only.", "danger")
-        return redirect(url_for("dashboard"))
-
-    credentials = []
-    unlocked = False
-
-    if request.method == "POST":
-        submitted_key = request.form.get("secret_key", "")
-        expected_key = app.config.get("ADMIN_SECRET_VIEW_KEY", "")
-
-        if not expected_key:
-            flash("Secret key is not configured on server.", "danger")
-            return render_template("admin_secret_credentials.html", credentials=credentials, unlocked=unlocked)
-
-        if not hmac.compare_digest(submitted_key, expected_key):
-            flash("Invalid secret key.", "danger")
-            return render_template("admin_secret_credentials.html", credentials=credentials, unlocked=unlocked)
-
-        try:
-            credentials = list_decrypted_user_credentials(app)
-            unlocked = True
-        except Exception:
-            app.logger.exception("Failed to read decrypted user credential backup.")
-            flash("Unable to read encrypted backup store right now.", "danger")
-
-    return render_template("admin_secret_credentials.html", credentials=credentials, unlocked=unlocked)
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -1563,6 +1714,74 @@ def api_my_course_attendance():
         })
     return jsonify(result)
 # ──────────────────────────────────────────────────────────────────────────────
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+@limiter.limit("5 per hour")
+def forgot_password():
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()
+        user = User.query.filter_by(email=email).first()
+
+        if user:
+            reset_url = url_for("reset_password", token=generate_password_reset_token(user), _external=True)
+            sent = send_password_reset_email(
+                app,
+                user.name,
+                user.email,
+                reset_url,
+                app.config["PASSWORD_RESET_TOKEN_MAX_AGE_MINUTES"],
+            )
+            if not sent:
+                app.logger.warning("Password reset email could not be sent for user_id=%s", user.id)
+            if app.config.get("DEBUG"):
+                app.logger.info("Password reset link for %s: %s", user.email, reset_url)
+
+        flash("If that email exists in the system, a password reset link has been sent.", "info")
+        return redirect(url_for("login"))
+
+    return render_template("forgot_password.html")
+
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+@limiter.limit("10 per hour")
+def reset_password(token):
+    if current_user.is_authenticated:
+        logout_user()
+
+    user = get_user_from_reset_token(token)
+    if not user:
+        flash("This password reset link is invalid or has expired. Request a new one.", "warning")
+        return redirect(url_for("forgot_password"))
+
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+
+        password_error = password_validation_error(password)
+        if password_error:
+            flash(password_error, "warning")
+            return render_template("reset_password.html", token=token)
+
+        if password != confirm_password:
+            flash("Passwords do not match.", "warning")
+            return render_template("reset_password.html", token=token)
+
+        user.password_hash = generate_password_hash(password, method="scrypt")
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Password reset failed for user_id=%s", user.id)
+            flash("Unable to reset password right now. Please try again.", "danger")
+            return render_template("reset_password.html", token=token)
+
+        flash("Password updated successfully. Please log in with your new password.", "success")
+        return redirect(url_for("login"))
+
+    return render_template("reset_password.html", token=token)
 
 
 @app.route("/login", methods=["GET", "POST"])

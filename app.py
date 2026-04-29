@@ -69,6 +69,15 @@ def inject_template_globals():
         "messagingSenderId": app.config.get("FIREBASE_MESSAGING_SENDER_ID", ""),
         "appId": app.config.get("FIREBASE_APP_ID", ""),
     }
+    liveness_config = {
+        "enabled": app.config.get("LIVENESS_DETECTION_ENABLED", True),
+        "requireBlink": app.config.get("LIVENESS_REQUIRE_BLINK", True),
+        "requireHeadMovement": app.config.get("LIVENESS_REQUIRE_HEAD_MOVEMENT", True),
+        "timeoutSeconds": app.config.get("LIVENESS_TIMEOUT_SECONDS", 15),
+        "blinkThreshold": app.config.get("LIVENESS_BLINK_THRESHOLD", 0.25),
+        "movementThreshold": app.config.get("LIVENESS_MOVEMENT_THRESHOLD", 15),
+        "qualityThreshold": app.config.get("LIVENESS_QUALITY_THRESHOLD", 0.6),
+    }
     return {
         "csrf_token": generate_csrf,
         "app_name": app.config["APP_NAME"],
@@ -78,6 +87,7 @@ def inject_template_globals():
         "firebase_web_config": firebase_web_config,
         "firebase_enabled": app.extensions.get("firebase_enabled", False),
         "firebase_error": app.extensions.get("firebase_error", ""),
+        "liveness_config": liveness_config,
     }
 
 

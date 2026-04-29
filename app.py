@@ -432,7 +432,11 @@ def build_session_roster(session):
 
 
 def ensure_schema_compatibility():
-    db.create_all()
+    try:
+        db.create_all()
+    except Exception as e:
+        # Ignore errors if tables/indexes already exist
+        app.logger.warning(f"db.create_all() warning (safe to ignore): {e}")
 
     def _columns(conn, table_name):
         inspector = inspect(conn)

@@ -65,10 +65,18 @@
         <script>
             // Convert flash messages to toast notifications
             document.addEventListener('DOMContentLoaded', function() {
-                {% for category, message in messages %}
-                const type = '{{ category }}' === 'danger' ? 'error' : '{{ category }}';
-                window.toast.show('{{ message | safe }}', type);
-                {% endfor %}
+                // Wait a bit for toast to initialize
+                setTimeout(function() {
+                    {% for category, message in messages %}
+                    const type = '{{ category }}' === 'danger' ? 'error' : '{{ category }}';
+                    if (window.toast && window.toast.show) {
+                        window.toast.show('{{ message | safe }}', type);
+                    } else {
+                        console.error('Toast not initialized:', '{{ message | safe }}');
+                        alert('{{ message | safe }}'); // Fallback
+                    }
+                    {% endfor %}
+                }, 100);
             });
         </script>
         {% endif %}

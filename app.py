@@ -1922,12 +1922,18 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
+        
+        app.logger.info(f"Login attempt for email: {email}")
         user = User.query.filter_by(email=email).first()
 
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
+            app.logger.info(f"Login successful for: {email}")
+            flash("Login successful!", "success")
             return redirect(url_for("dashboard"))
-        flash("Invalid credentials", "danger")
+        
+        app.logger.warning(f"Login failed for: {email} - Invalid credentials")
+        flash("Invalid email or password. Please try again.", "danger")
 
     return render_template("login.html")
 

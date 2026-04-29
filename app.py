@@ -1723,6 +1723,68 @@ def api_my_course_attendance():
             "low": pct < 75,
         })
     return jsonify(result)
+
+
+@app.route("/api/my_attendance_calendar")
+@login_required
+def api_my_attendance_calendar():
+    """Returns attendance data formatted for calendar view."""
+    if current_user.role != "student":
+        return jsonify([]), 403
+    
+    # Get all attendance records
+    attendance_records = Attendance.query.filter_by(user_id=current_user.id).all()
+    
+    # Get all session attendance records
+    session_records = (
+        db.session.query(SessionAttendance, ClassSession)
+        .join(ClassSession, ClassSession.id == SessionAttendance.session_id)
+        .filter(SessionAttendance.student_id == current_user.id)
+        .all()
+    )
+    
+    calendar_data = []
+    
+    # Add daily attendance records
+    for record in attendance_records:
+        calendar_data.append({
+            "date": record.date.isoformat(),
+            "status": "present",
+            "time": record.time.strftime("%I:%M %p") if record.time else None,
+            "type": "daily"
+        })
+    
+    # Add session attendance records
+    for sa, session in session_records:
+        marked_date = sa.marked_at.date() if sa.marked_at else None
+        if marked_date:
+            # Check if already added from daily records
+            existing = next((item for item in calendar_data if item["date"] == marked_date.isoformat()), None)
+            if not existing:
+                calendar_data.append({
+                    "date": marked_date.isoformat(),
+                    "status": "present",
+                    "time": sa.marked_at.strftime("%I:%M %p") if sa.marked_at else None,
+                    "course_code": session.course_code,
+                    "session_title": session.title,
+                    "type": "session"
+                })
+            elif "course_code" not in existing:
+                # Enhance existing record with session info
+                existing["course_code"] = session.course_code
+                existing["session_title"] = session.title
+    
+    return jsonify(calendar_data)
+
+
+@app.route("/attendance/calendar")
+@login_required
+def attendance_calendar():
+    """Render attendance calendar view."""
+    if current_user.role != "student":
+        flash("Calendar view is only available for students.", "warning")
+        return redirect(url_for("dashboard"))
+    return render_template("attendance_calendar.html")
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.route("/forgot-password", methods=["GET", "POST"])

@@ -439,6 +439,7 @@ def ensure_schema_compatibility():
         return {column["name"] for column in inspector.get_columns(table_name)}
 
     with db.engine.begin() as conn:
+        # ClassSession table updates
         class_session_columns = _columns(conn, "class_sessions")
         if "course_id" not in class_session_columns:
             conn.execute(text("ALTER TABLE class_sessions ADD COLUMN course_id INTEGER"))
@@ -448,7 +449,10 @@ def ensure_schema_compatibility():
             conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_lng FLOAT"))
         if "location_radius_meters" not in class_session_columns:
             conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_radius_meters INTEGER DEFAULT 50"))
+        if "updated_at" not in class_session_columns:
+            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN updated_at DATETIME"))
 
+        # SessionAttendance table updates
         session_attendance_columns = _columns(conn, "session_attendance")
         if "device_hash" not in session_attendance_columns:
             conn.execute(text("ALTER TABLE session_attendance ADD COLUMN device_hash VARCHAR(128)"))
@@ -456,7 +460,8 @@ def ensure_schema_compatibility():
             conn.execute(text("ALTER TABLE session_attendance ADD COLUMN ip_address VARCHAR(64)"))
         if "user_agent" not in session_attendance_columns:
             conn.execute(text("ALTER TABLE session_attendance ADD COLUMN user_agent VARCHAR(255)"))
-            
+        
+        # Users table updates
         users_columns = _columns(conn, "users")
         if "college_id" not in users_columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN college_id VARCHAR(50)"))
@@ -466,7 +471,29 @@ def ensure_schema_compatibility():
             conn.execute(text("ALTER TABLE users ADD COLUMN year VARCHAR(10)"))
         if "semester" not in users_columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN semester VARCHAR(10)"))
+        if "updated_at" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN updated_at DATETIME"))
+        if "is_active" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+        if "last_login" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN last_login DATETIME"))
 
+        # Attendance table updates
+        attendance_columns = _columns(conn, "attendance")
+        if "created_at" not in attendance_columns:
+            conn.execute(text("ALTER TABLE attendance ADD COLUMN created_at DATETIME"))
+
+        # Course table updates
+        course_columns = _columns(conn, "courses")
+        if "updated_at" not in course_columns:
+            conn.execute(text("ALTER TABLE courses ADD COLUMN updated_at DATETIME"))
+        if "is_active" not in course_columns:
+            conn.execute(text("ALTER TABLE courses ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+
+        # Enrollment table updates
+        enrollment_columns = _columns(conn, "enrollments")
+        if "is_active" not in enrollment_columns:
+            conn.execute(text("ALTER TABLE enrollments ADD COLUMN is_active BOOLEAN DEFAULT 1"))
 @app.after_request
 def add_header(response):
     """Add security headers and cache control to all responses."""

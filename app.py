@@ -1930,13 +1930,13 @@ def login():
         app.logger.info(f"Login attempt for email: {email}")
         app.logger.info(f"Password length: {len(password)}")
         
-        # Refresh database session to avoid stale connections
-        db.session.expire_all()
+        # Force fresh database query by removing session and creating new query
+        db.session.remove()
         
         user = User.query.filter_by(email=email).first()
 
         if user:
-            app.logger.info(f"User found: {user.email}")
+            app.logger.info(f"User found: {user.email} (ID: {user.id})")
             password_match = check_password_hash(user.password_hash, password)
             app.logger.info(f"Password match result: {password_match}")
             
@@ -1947,6 +1947,9 @@ def login():
                 return redirect(url_for("dashboard"))
         else:
             app.logger.warning(f"User not found: {email}")
+            # Debug: Check total users in database
+            total_users = User.query.count()
+            app.logger.warning(f"Total users in database: {total_users}")
         
         app.logger.warning(f"Login failed for: {email} - Invalid credentials")
         flash("Invalid email or password. Please try again.", "danger")

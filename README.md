@@ -80,6 +80,7 @@ This system drastically reduces proxy attendance and manual entry errors by util
 
 | Feature | Description |
 | :--- | :--- |
+| **Liveness Detection** | Advanced anti-spoofing with blink detection, head movement tracking, and texture analysis to prevent photo/video attacks. |
 | **Strict Geofencing** | Users can only mark attendance if their GPS coordinates fall strictly within the configurable campus radius (e.g., 100 meters). |
 | **Edge Biometrics** | The system runs purely on edge devices for privacy. Facial descriptors cannot be reverse-engineered into photographs. |
 | **Single-Face Checks** | Advanced AI ensures only *one* face is in the camera frame during attendance. |

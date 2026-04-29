@@ -42,6 +42,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+<script src="{{ url_for('static', filename='liveness.js') }}"></script>
 <script>
     const video = document.getElementById('video-preview');
     const markBtn = document.getElementById('mark-btn');
@@ -53,6 +54,8 @@
 
     let userCoords = { lat: null, lng: null };
     let modelsLoaded = false;
+    let livenessDetector = null;
+    let isMarking = false;
     const deviceId = (() => {
         const key = 'attendance_device_id';
         let id = localStorage.getItem(key);
@@ -136,30 +139,88 @@
     refreshBtn.addEventListener('click', refreshSessions);
 
     markBtn.addEventListener('click', async () => {
-        statusText.innerText = 'Running verification...';
-        statusText.className = 'mt-2 fw-bold text-primary';
+        if (isMarking) return;
+        
+        isMarking = true;
+        statusText.innerText = '👁️ Starting liveness verification...';
+        statusText.className = 'mt-2 fw-bold text-info';
         markBtn.disabled = true;
 
-        const allFaces = await faceapi.detectAllFaces(video)
-            .withFaceLandmarks()
-            .withFaceDescriptors();
+        // Initialize liveness detector
+        livenessDetector = new LivenessDetector({
+            requireBlink: true,
+            requireHeadMovement: true,
+            timeoutSeconds: 15,
+            onProgress: (data) => {
+                statusText.innerText = data.message;
+                statusText.className = 'mt-2 fw-bold text-info';
+            },
+            onTimeout: () => {
+                statusText.innerText = '⏱️ Liveness check timed out. Try again.';
+                statusText.className = 'mt-2 fw-bold text-warning';
+                isMarking = false;
+                checkReady();
+            }
+        });
 
-        if (!allFaces || allFaces.length === 0) {
-            statusText.innerText = 'No face detected. Look directly at camera.';
-            statusText.className = 'mt-2 fw-bold text-danger';
-            markBtn.disabled = false;
-            return;
-        }
+        livenessDetector.start();
 
-        if (allFaces.length > 1) {
-            statusText.innerText = 'Multiple faces detected. Only one person allowed.';
-            statusText.className = 'mt-2 fw-bold text-danger';
-            markBtn.disabled = false;
-            return;
-        }
+        // Start continuous liveness detection
+        const livenessInterval = setInterval(async () => {
+            if (!isMarking) {
+                clearInterval(livenessInterval);
+                return;
+            }
 
-        const descriptor = Array.from(allFaces[0].descriptor);
+            try {
+                const allFaces = await faceapi.detectAllFaces(video)
+                    .withFaceLandmarks()
+                    .withFaceDescriptors();
 
+                if (!allFaces || allFaces.length === 0) {
+                    statusText.innerText = 'No face detected. Look at camera.';
+                    statusText.className = 'mt-2 fw-bold text-warning';
+                    return;
+                }
+
+                if (allFaces.length > 1) {
+                    statusText.innerText = 'Multiple faces detected. Only one person allowed.';
+                    statusText.className = 'mt-2 fw-bold text-danger';
+                    clearInterval(livenessInterval);
+                    isMarking = false;
+                    checkReady();
+                    return;
+                }
+
+                const result = await livenessDetector.processFrame(allFaces, video);
+
+                if (result.passed) {
+                    clearInterval(livenessInterval);
+                    statusText.innerText = '✅ Liveness verified! Marking attendance...';
+                    statusText.className = 'mt-2 fw-bold text-success';
+                    await submitAttendance(result.descriptor);
+                } else if (result.reason !== 'In progress') {
+                    statusText.innerText = result.instruction;
+                    statusText.className = 'mt-2 fw-bold text-warning';
+                }
+            } catch (error) {
+                console.error('Liveness detection error:', error);
+            }
+        }, 100);
+
+        // Timeout fallback
+        setTimeout(() => {
+            if (isMarking) {
+                clearInterval(livenessInterval);
+                statusText.innerText = '⏱️ Verification timed out. Try again.';
+                statusText.className = 'mt-2 fw-bold text-warning';
+                isMarking = false;
+                checkReady();
+            }
+        }, 16000);
+    });
+
+    async function submitAttendance(descriptor) {
         try {
             const response = await fetch('/api/session_attendance/mark', {
                 method: 'POST',
@@ -169,26 +230,30 @@
                     descriptor: descriptor,
                     lat: userCoords.lat,
                     lng: userCoords.lng,
-                    device_id: deviceId
+                    device_id: deviceId,
+                    liveness_verified: true
                 })
             });
 
             const result = await response.json();
             if (result.success) {
-                statusText.innerText = result.message;
+                statusText.innerText = '✅ ' + result.message;
                 statusText.className = 'mt-2 fw-bold text-success';
                 setTimeout(() => window.location.href = '/dashboard', 1500);
             } else {
                 statusText.innerText = result.message || 'Verification failed.';
                 statusText.className = 'mt-2 fw-bold text-danger';
+                isMarking = false;
                 checkReady();
             }
-        } catch (_) {
+        } catch (error) {
+            console.error('Submission error:', error);
             statusText.innerText = 'Connection error. Try again.';
             statusText.className = 'mt-2 fw-bold text-danger';
+            isMarking = false;
             checkReady();
         }
-    });
+    }
 </script>
 {% endblock %}
 

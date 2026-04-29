@@ -36,7 +36,11 @@ class Config:
     APP_PROGRAM_NAME = os.environ.get('APP_PROGRAM_NAME', 'Intel Digital Readiness Bootcamp')
     APP_GEOFENCE_LABEL = os.environ.get('APP_GEOFENCE_LABEL', 'authorized attendance zone')
     SECRET_KEY = os.environ.get('SECRET_KEY')
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///attendance.db')
+    
+    # Use absolute path for database to avoid confusion with multiple instance folders
+    _basedir = os.path.abspath(os.path.dirname(__file__))
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', f'sqlite:///{os.path.join(_basedir, "instance", "attendance.db")}')
+    
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     APP_TIMEZONE = os.environ.get('APP_TIMEZONE', 'Asia/Kolkata')
     FLASK_ENV = os.environ.get('FLASK_ENV', 'production').strip().lower()
@@ -85,3 +89,21 @@ class Config:
     MAIL_FROM_NAME = os.environ.get('MAIL_FROM_NAME', 'Attendance System')
     PASSWORD_RESET_SALT = os.environ.get('PASSWORD_RESET_SALT', 'password-reset')
     PASSWORD_RESET_TOKEN_MAX_AGE_MINUTES = _env_int('PASSWORD_RESET_TOKEN_MAX_AGE_MINUTES', 30)
+
+    # ─── Liveness Detection Settings ────────────────────────────────────────────
+    # Enable/disable liveness detection for face verification
+    LIVENESS_DETECTION_ENABLED = _env_bool('LIVENESS_DETECTION_ENABLED', True)
+    LIVENESS_REQUIRE_BLINK = _env_bool('LIVENESS_REQUIRE_BLINK', True)
+    LIVENESS_REQUIRE_HEAD_MOVEMENT = _env_bool('LIVENESS_REQUIRE_HEAD_MOVEMENT', True)
+    LIVENESS_TIMEOUT_SECONDS = _env_int('LIVENESS_TIMEOUT_SECONDS', 15)
+    LIVENESS_BLINK_THRESHOLD = _env_float('LIVENESS_BLINK_THRESHOLD', 0.25)
+    LIVENESS_MOVEMENT_THRESHOLD = _env_int('LIVENESS_MOVEMENT_THRESHOLD', 15)
+    LIVENESS_QUALITY_THRESHOLD = _env_float('LIVENESS_QUALITY_THRESHOLD', 0.6)
+
+    # ─── Face Recognition Thresholds ────────────────────────────────────────────
+    # Lower value = stricter matching (more secure, may reject valid users)
+    # Higher value = looser matching (less secure, may accept wrong users)
+    # Recommended: 0.45-0.50 for production
+    FACE_RECOGNITION_THRESHOLD = _env_float('FACE_RECOGNITION_THRESHOLD', 0.45)
+    FACE_DUPLICATE_THRESHOLD = _env_float('FACE_DUPLICATE_THRESHOLD', 0.50)
+    FACE_SPOOFING_THRESHOLD = _env_float('FACE_SPOOFING_THRESHOLD', 0.80)

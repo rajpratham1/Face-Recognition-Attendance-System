@@ -96,7 +96,12 @@
         </div>
 
         <div class="glass-card" id="daily-records">
-            <div class="section-head"><h4>My Daily Attendance Records</h4></div>
+            <div class="section-head">
+                <h4>My Daily Attendance Records</h4>
+                <a href="{{ url_for('attendance_calendar') }}" class="btn btn-outline-primary btn-sm">
+                    📅 Calendar View
+                </a>
+            </div>
 
             {% set pct = attendance_percentage %}
             {% set bar_class = 'bg-success' if pct >= 75 else ('bg-warning' if pct >= 50 else 'bg-danger') %}

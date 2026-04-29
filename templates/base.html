@@ -9,8 +9,8 @@
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
     <script>
         window.getCsrfToken = function () {
             const meta = document.querySelector('meta[name="csrf-token"]');
@@ -62,16 +62,28 @@
     <div class="container">
         {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
-        {% for category, message in messages %}
-        <div class="alert alert-{{ category }} alert-dismissible fade show glass-card border-0 mb-4" role="alert">
-            {{ message }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        {% endfor %}
+        <script>
+            // Convert flash messages to toast notifications
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(function() {
+                    {% for category, message in messages %}
+                    const type = '{{ category }}' === 'danger' ? 'error' : '{{ category }}';
+                    if (window.toast && window.toast.show) {
+                        window.toast.show('{{ message | safe }}', type);
+                    }
+                    {% endfor %}
+                }, 100);
+            });
+        </script>
         {% endif %}
         {% endwith %}
 
         {% block content %}{% endblock %}
+    </div>
+
+    <!-- Global Loading Overlay -->
+    <div class="loading-overlay" id="global-loading">
+        <div class="loading-spinner"></div>
     </div>
 
     {% block footer %}{% endblock %}
@@ -89,6 +101,34 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='toast.js') }}"></script>
+    <script src="{{ url_for('static', filename='calendar.js') }}"></script>
+    <script>
+        // Global loading helper functions
+        window.showLoading = function() {
+            document.getElementById('global-loading')?.classList.add('active');
+        };
+
+        window.hideLoading = function() {
+            document.getElementById('global-loading')?.classList.remove('active');
+        };
+
+        // Button loading state helper
+        window.setButtonLoading = function(button, loading = true) {
+            if (loading) {
+                button.classList.add('btn-loading');
+                button.disabled = true;
+                button.dataset.originalText = button.innerHTML;
+                button.innerHTML = '<span>' + button.dataset.originalText + '</span>';
+            } else {
+                button.classList.remove('btn-loading');
+                button.disabled = false;
+                if (button.dataset.originalText) {
+                    button.innerHTML = button.dataset.originalText;
+                }
+            }
+        };
+    </script>
     <script>
         (function() {
             const latAttr = document.body.getAttribute('data-lat');

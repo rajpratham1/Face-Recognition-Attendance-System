@@ -69,6 +69,15 @@ def inject_template_globals():
         "messagingSenderId": app.config.get("FIREBASE_MESSAGING_SENDER_ID", ""),
         "appId": app.config.get("FIREBASE_APP_ID", ""),
     }
+    liveness_config = {
+        "enabled": app.config.get("LIVENESS_DETECTION_ENABLED", True),
+        "requireBlink": app.config.get("LIVENESS_REQUIRE_BLINK", True),
+        "requireHeadMovement": app.config.get("LIVENESS_REQUIRE_HEAD_MOVEMENT", True),
+        "timeoutSeconds": app.config.get("LIVENESS_TIMEOUT_SECONDS", 15),
+        "blinkThreshold": app.config.get("LIVENESS_BLINK_THRESHOLD", 0.25),
+        "movementThreshold": app.config.get("LIVENESS_MOVEMENT_THRESHOLD", 15),
+        "qualityThreshold": app.config.get("LIVENESS_QUALITY_THRESHOLD", 0.6),
+    }
     return {
         "csrf_token": generate_csrf,
         "app_name": app.config["APP_NAME"],
@@ -78,6 +87,7 @@ def inject_template_globals():
         "firebase_web_config": firebase_web_config,
         "firebase_enabled": app.extensions.get("firebase_enabled", False),
         "firebase_error": app.extensions.get("firebase_error", ""),
+        "liveness_config": liveness_config,
     }
 
 
@@ -422,13 +432,18 @@ def build_session_roster(session):
 
 
 def ensure_schema_compatibility():
-    db.create_all()
+    try:
+        db.create_all()
+    except Exception as e:
+        # Ignore errors if tables/indexes already exist
+        app.logger.warning(f"db.create_all() warning (safe to ignore): {e}")
 
     def _columns(conn, table_name):
         inspector = inspect(conn)
         return {column["name"] for column in inspector.get_columns(table_name)}
 
     with db.engine.begin() as conn:
+        # ClassSession table updates
         class_session_columns = _columns(conn, "class_sessions")
         if "course_id" not in class_session_columns:
             conn.execute(text("ALTER TABLE class_sessions ADD COLUMN course_id INTEGER"))
@@ -438,7 +453,10 @@ def ensure_schema_compatibility():
             conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_lng FLOAT"))
         if "location_radius_meters" not in class_session_columns:
             conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_radius_meters INTEGER DEFAULT 50"))
+        if "updated_at" not in class_session_columns:
+            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN updated_at DATETIME"))
 
+        # SessionAttendance table updates
         session_attendance_columns = _columns(conn, "session_attendance")
         if "device_hash" not in session_attendance_columns:
             conn.execute(text("ALTER TABLE session_attendance ADD COLUMN device_hash VARCHAR(128)"))
@@ -446,7 +464,8 @@ def ensure_schema_compatibility():
             conn.execute(text("ALTER TABLE session_attendance ADD COLUMN ip_address VARCHAR(64)"))
         if "user_agent" not in session_attendance_columns:
             conn.execute(text("ALTER TABLE session_attendance ADD COLUMN user_agent VARCHAR(255)"))
-            
+        
+        # Users table updates
         users_columns = _columns(conn, "users")
         if "college_id" not in users_columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN college_id VARCHAR(50)"))
@@ -456,7 +475,29 @@ def ensure_schema_compatibility():
             conn.execute(text("ALTER TABLE users ADD COLUMN year VARCHAR(10)"))
         if "semester" not in users_columns:
             conn.execute(text("ALTER TABLE users ADD COLUMN semester VARCHAR(10)"))
+        if "updated_at" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN updated_at DATETIME"))
+        if "is_active" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+        if "last_login" not in users_columns:
+            conn.execute(text("ALTER TABLE users ADD COLUMN last_login DATETIME"))
 
+        # Attendance table updates
+        attendance_columns = _columns(conn, "attendance")
+        if "created_at" not in attendance_columns:
+            conn.execute(text("ALTER TABLE attendance ADD COLUMN created_at DATETIME"))
+
+        # Course table updates
+        course_columns = _columns(conn, "courses")
+        if "updated_at" not in course_columns:
+            conn.execute(text("ALTER TABLE courses ADD COLUMN updated_at DATETIME"))
+        if "is_active" not in course_columns:
+            conn.execute(text("ALTER TABLE courses ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+
+        # Enrollment table updates
+        enrollment_columns = _columns(conn, "enrollments")
+        if "is_active" not in enrollment_columns:
+            conn.execute(text("ALTER TABLE enrollments ADD COLUMN is_active BOOLEAN DEFAULT 1"))
 @app.after_request
 def add_header(response):
     """Add security headers and cache control to all responses."""
@@ -644,7 +685,10 @@ def kiosk_mark():
 
     unknown_encoding = np.array(normalized_descriptor, dtype=float)
     face_distance = float(np.linalg.norm(known_encoding - unknown_encoding))
-    if face_distance >= 0.55:
+    
+    FACE_THRESHOLD = app.config.get('FACE_RECOGNITION_THRESHOLD', 0.45)
+    
+    if face_distance >= FACE_THRESHOLD:
         return jsonify({"success": False, "message": "Face verification failed for the selected student."}), 400
 
     ip_address = (request.headers.get("X-Forwarded-For", request.remote_addr) or "").split(",")[0].strip()[:64]
@@ -827,7 +871,7 @@ def save_face():
     # Batch-compare new face against all registered faces using numpy,
     # preventing one person creating multiple accounts (student/teacher).
     new_vec = np.array(normalized_descriptor)
-    FACE_DUPLICATE_THRESHOLD = 0.50
+    FACE_DUPLICATE_THRESHOLD = app.config.get('FACE_DUPLICATE_THRESHOLD', 0.50)
     existing_users = User.query.filter(
         User.face_registered.is_(True),
         User.face_encoding.isnot(None),
@@ -927,7 +971,9 @@ def mark_attendance():
         unknown_encoding = np.array(descriptor)
         distance = float(np.linalg.norm(known_encoding - unknown_encoding))
 
-        if distance < 0.6:
+        FACE_THRESHOLD = app.config.get('FACE_RECOGNITION_THRESHOLD', 0.45)
+        
+        if distance < FACE_THRESHOLD:
             local_now = now_local()
             new_attendance = Attendance(
                 user_id=current_user.id,
@@ -1234,17 +1280,40 @@ def mark_session_attendance():
     unknown_encoding = np.array(descriptor)
     distance = float(np.linalg.norm(known_encoding - unknown_encoding))
 
-    # Detect possible spoofing attack
-    if distance > 0.8:
-        app.logger.warning("🚨 Possible spoofing attempt (photo attack)")
+    FACE_THRESHOLD = app.config.get('FACE_RECOGNITION_THRESHOLD', 0.45)
+    SPOOFING_THRESHOLD = app.config.get('FACE_SPOOFING_THRESHOLD', 0.80)
 
-    # UNKNOWN PERSON ALERT
-    if distance >= 0.6:
+    # Detect possible spoofing attack (photo/video)
+    if distance > SPOOFING_THRESHOLD:
+        app.logger.warning(
+            "🚨 Possible spoofing attempt detected: user_id=%s, session_id=%s, distance=%.4f",
+            current_user.id, session.id, distance
+        )
         record_attempt(
             session.id,
             current_user.id,
             False,
-            "Unknown person detected",
+            "Possible spoofing attempt (photo attack)",
+            lat,
+            lng,
+            distance,
+            device_hash,
+            ip_address,
+            user_agent
+        )
+        db.session.commit()
+        return jsonify({
+            "success": False,
+            "message": "⚠ Spoofing attempt detected! Please use live camera."
+        }), 400
+
+    # UNKNOWN PERSON ALERT - Face doesn't match registered face
+    if distance >= FACE_THRESHOLD:
+        record_attempt(
+            session.id,
+            current_user.id,
+            False,
+            "Face verification failed - unknown person",
             lat,
             lng,
             distance,
@@ -1256,16 +1325,21 @@ def mark_session_attendance():
         db.session.commit()
 
         app.logger.warning(
-            f"⚠ Unknown face detected in session {session.id} for user {current_user.id}"
+            "⚠ Face verification failed: user_id=%s, session_id=%s, distance=%.4f (threshold=%.2f)",
+            current_user.id, session.id, distance, FACE_THRESHOLD
         )
 
         return jsonify({
             "success": False,
-            "message": "⚠ Unknown face detected! Attendance blocked."
+            "message": f"⚠ Face verification failed! Your face doesn't match the registered face. (Distance: {distance:.2f})"
         }), 400
 
 
     # FACE VERIFIED → MARK ATTENDANCE
+    app.logger.info(
+        "✅ Face verified successfully: user_id=%s, session_id=%s, distance=%.4f",
+        current_user.id, session.id, distance
+    )
     entry = SessionAttendance(
         session_id=session.id,
         student_id=current_user.id,
@@ -1713,6 +1787,68 @@ def api_my_course_attendance():
             "low": pct < 75,
         })
     return jsonify(result)
+
+
+@app.route("/api/my_attendance_calendar")
+@login_required
+def api_my_attendance_calendar():
+    """Returns attendance data formatted for calendar view."""
+    if current_user.role != "student":
+        return jsonify([]), 403
+    
+    # Get all attendance records
+    attendance_records = Attendance.query.filter_by(user_id=current_user.id).all()
+    
+    # Get all session attendance records
+    session_records = (
+        db.session.query(SessionAttendance, ClassSession)
+        .join(ClassSession, ClassSession.id == SessionAttendance.session_id)
+        .filter(SessionAttendance.student_id == current_user.id)
+        .all()
+    )
+    
+    calendar_data = []
+    
+    # Add daily attendance records
+    for record in attendance_records:
+        calendar_data.append({
+            "date": record.date.isoformat(),
+            "status": "present",
+            "time": record.time.strftime("%I:%M %p") if record.time else None,
+            "type": "daily"
+        })
+    
+    # Add session attendance records
+    for sa, session in session_records:
+        marked_date = sa.marked_at.date() if sa.marked_at else None
+        if marked_date:
+            # Check if already added from daily records
+            existing = next((item for item in calendar_data if item["date"] == marked_date.isoformat()), None)
+            if not existing:
+                calendar_data.append({
+                    "date": marked_date.isoformat(),
+                    "status": "present",
+                    "time": sa.marked_at.strftime("%I:%M %p") if sa.marked_at else None,
+                    "course_code": session.course_code,
+                    "session_title": session.title,
+                    "type": "session"
+                })
+            elif "course_code" not in existing:
+                # Enhance existing record with session info
+                existing["course_code"] = session.course_code
+                existing["session_title"] = session.title
+    
+    return jsonify(calendar_data)
+
+
+@app.route("/attendance/calendar")
+@login_required
+def attendance_calendar():
+    """Render attendance calendar view."""
+    if current_user.role != "student":
+        flash("Calendar view is only available for students.", "warning")
+        return redirect(url_for("dashboard"))
+    return render_template("attendance_calendar.html")
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.route("/forgot-password", methods=["GET", "POST"])
@@ -1790,12 +1926,16 @@ def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
+        
         user = User.query.filter_by(email=email).first()
 
         if user and check_password_hash(user.password_hash, password):
             login_user(user)
+            flash("Login successful!", "success")
             return redirect(url_for("dashboard"))
-        flash("Invalid credentials", "danger")
+        
+        flash("Invalid email or password. Please try again.", "danger")
+        return redirect(url_for("login"))
 
     return render_template("login.html")
 

@@ -19,7 +19,10 @@
     </script>
 </head>
 
-<body>
+<body data-lat="{{ APP_INVERTIS_LAT | default('null') }}" 
+      data-lng="{{ APP_INVERTIS_LNG | default('null') }}" 
+      data-radius="{{ APP_ALLOWED_RADIUS | default('100') }}" 
+      data-enforced="{{ 'true' if APP_GEOFENCE_ENFORCED else 'false' }}">
     <nav class="navbar navbar-expand-lg sticky-top mb-4">
         <div class="container">
             <a class="navbar-brand brand-wrap" href="/">
@@ -71,6 +74,8 @@
         {% block content %}{% endblock %}
     </div>
 
+    {% block footer %}{% endblock %}
+
     <!-- STRICT GEOFENCE UI BLOCKER -->
     <div id="geofence-blocker" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:rgba(0,0,0,0.95); z-index:999999; color:white; flex-direction:column; justify-content:center; align-items:center; text-align:center; padding:20px; backdrop-filter:blur(10px);">
         <i class="fas fa-map-marker-alt mb-3" style="font-size: 3rem; color: #ef4444;"></i>
@@ -86,10 +91,12 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         (function() {
-            const INVERTIS_LAT = {{ APP_INVERTIS_LAT | default('null') | tojson }};
-            const INVERTIS_LNG = {{ APP_INVERTIS_LNG | default('null') | tojson }};
-            const ALLOWED_RADIUS = {{ APP_ALLOWED_RADIUS | default('100') | tojson }};
-            const GEOFENCE_ENFORCED = {{ APP_GEOFENCE_ENFORCED | default(true) | tojson }};
+            const latAttr = document.body.getAttribute('data-lat');
+            const lngAttr = document.body.getAttribute('data-lng');
+            const INVERTIS_LAT = latAttr === 'null' || !latAttr ? null : parseFloat(latAttr);
+            const INVERTIS_LNG = lngAttr === 'null' || !lngAttr ? null : parseFloat(lngAttr);
+            const ALLOWED_RADIUS = parseFloat(document.body.getAttribute('data-radius')) || 100;
+            const GEOFENCE_ENFORCED = document.body.getAttribute('data-enforced') === 'true';
             
             if (!GEOFENCE_ENFORCED || INVERTIS_LAT === null || INVERTIS_LNG === null || INVERTIS_LAT === "null") return;
 

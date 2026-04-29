@@ -2,8 +2,7 @@ import os
 
 from dotenv import load_dotenv
 
-
-load_dotenv()
+load_dotenv(override=True)
 
 
 def _env_float(name, default):
@@ -64,8 +63,8 @@ class Config:
     FIREBASE_APP_ID = os.environ.get('FIREBASE_APP_ID', '')
 
     # Campus geofence settings (override from environment for local/dev setups)
-    INVERTIS_LAT = _env_float('INVERTIS_LAT', 28.2923217)
-    INVERTIS_LNG = _env_float('INVERTIS_LNG', 79.4930554)
+    INVERTIS_LAT = _env_float('INVERTIS_LAT', 28.325645)
+    INVERTIS_LNG = _env_float('INVERTIS_LNG', 79.461063)
     ALLOWED_RADIUS_METERS = _env_int('ALLOWED_RADIUS_METERS', 100)
     SESSION_LOCATION_RADIUS_METERS = _env_int('SESSION_LOCATION_RADIUS_METERS', 50)
     GEOFENCE_ENFORCED = _env_bool('GEOFENCE_ENFORCED', FLASK_ENV != 'development')

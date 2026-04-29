@@ -6,14 +6,16 @@
         <div class="col-lg-7">
             <p class="eyebrow mb-2">Attendance Intelligence Suite</p>
             <h1 class="display-5 fw-bold mb-3">Fast, reliable attendance with face verification and campus geofence</h1>
-            <p class="lead mb-4 text-muted">Built for classrooms that need trust, speed, and clean reporting across students, teachers, and admins.</p>
+            <p class="lead mb-4 text-muted">Built for classrooms that need trust, speed, and clean reporting across
+                students, teachers, and admins.</p>
 
             {% if current_user.is_authenticated %}
             <div class="d-flex flex-wrap gap-2 mb-3">
                 {% if current_user.role == 'student' %}
                 <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom btn-lg">Mark Attendance Now</a>
                 {% elif current_user.role == 'teacher' %}
-                <a href="{{ url_for('dashboard') }}#create-live-session" class="btn btn-custom btn-lg">Start Live Session</a>
+                <a href="{{ url_for('dashboard') }}#create-live-session" class="btn btn-custom btn-lg">Start Live
+                    Session</a>
                 {% elif current_user.role == 'admin' %}
                 <a href="{{ url_for('dashboard') }}#user-management" class="btn btn-custom btn-lg">Manage Users</a>
                 {% endif %}
@@ -40,21 +42,24 @@
                     <div class="status-dot status-ok"></div>
                     <div>
                         <h6 class="mb-1">Real-Time Session Attendance</h6>
-                        <p class="small text-muted mb-0">Teachers can open session windows and track marked counts live.</p>
+                        <p class="small text-muted mb-0">Teachers can open session windows and track marked counts live.
+                        </p>
                     </div>
                 </article>
                 <article class="home-status-card">
                     <div class="status-dot status-secure"></div>
                     <div>
                         <h6 class="mb-1">Secure Biometric Workflow</h6>
-                        <p class="small text-muted mb-0">Face descriptor based verification with single-face validation checks.</p>
+                        <p class="small text-muted mb-0">Face descriptor based verification with single-face validation
+                            checks.</p>
                     </div>
                 </article>
                 <article class="home-status-card">
                     <div class="status-dot status-geo"></div>
                     <div>
                         <h6 class="mb-1">Campus Boundary Enforcement</h6>
-                        <p class="small text-muted mb-0">Attendance marking is restricted to approved geofence radius.</p>
+                        <p class="small text-muted mb-0">Attendance marking is restricted to approved geofence radius.
+                        </p>
                     </div>
                 </article>
             </div>
@@ -75,7 +80,8 @@
             <article class="home-flow-card h-100">
                 <span class="flow-step">Step 2</span>
                 <h5>Start or Join Session</h5>
-                <p class="text-muted mb-0">Teachers launch live classes, students choose active sessions to check in.</p>
+                <p class="text-muted mb-0">Teachers launch live classes, students choose active sessions to check in.
+                </p>
             </article>
         </div>
         <div class="col-md-4">
@@ -136,14 +142,255 @@
     <div class="row g-3">
         <div class="col-lg-6">
             <div class="alert alert-warning small mb-0 h-100">
-                <strong>Biometric Notice:</strong> Face descriptors are used only for attendance verification and protected audit logging.
+                <strong>Biometric Notice:</strong> Face descriptors are used only for attendance verification and
+                protected audit logging.
             </div>
         </div>
         <div class="col-lg-6">
             <div class="alert alert-info small mb-0 h-100">
-                <strong>Setup Tip:</strong> Keep Firebase keys in .env and apply rules/index files from the deployment folder.
+                <strong>Setup Tip:</strong> Keep Firebase keys in .env and apply rules/index files from the deployment
+                folder.
             </div>
         </div>
     </div>
 </section>
+{% endblock %}
+
+{% block footer %}
+<footer class="text-light pt-4 pb-2 mt-4"
+    style="background-color: #0f172a; border-top: 5px solid var(--primary-color);">
+    <div class="container">
+        <div class="row g-3 mb-3">
+            <!-- Brand / About Column -->
+            <div class="col-lg-4">
+                <div class="d-flex align-items-center mb-3">
+                    <img src="{{ url_for('static', filename='logo.svg') }}" alt="Face Attendance Logo"
+                        style="height: 35px; width: auto;" class="me-2">
+                    <h5 class="fw-bold mb-0 text-white" style="letter-spacing: 0.5px;">Face Attendance</h5>
+                </div>
+                <p class="small text-secondary mb-3" style="line-height: 1.6;">
+                    Revolutionizing classroom attendance through secure, AI-powered biometric verification and precise
+                    geolocation. Built for modern university campuses.
+                </p>
+                <div class="d-flex gap-3">
+                    <a href="#" class="text-secondary" style="transition: color 0.3s;"
+                        onmouseover="this.style.color='#1da1f2'" onmouseout="this.style.color='#6c757d'"><i
+                            class="fab fa-twitter fs-5"></i></a>
+                    <a href="#" class="text-secondary" style="transition: color 0.3s;"
+                        onmouseover="this.style.color='#0a66c2'" onmouseout="this.style.color='#6c757d'"><i
+                            class="fab fa-linkedin fs-5"></i></a>
+                    <a href="#" class="text-secondary" style="transition: color 0.3s;"
+                        onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#6c757d'"><i
+                            class="fab fa-github fs-5"></i></a>
+                </div>
+            </div>
+
+            <!-- Quick Links Column -->
+            <div class="col-lg-3 offset-lg-1">
+                <h5 class="fw-bold mb-3 text-white">Quick Links</h5>
+                <ul class="list-unstyled mb-0">
+                    <li class="mb-2"><a href="{{ url_for('index') }}#user-manual"
+                            class="text-decoration-none text-secondary" style="transition: color 0.3s;"
+                            onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#6c757d'">User
+                            Manual</a></li>
+                    <li class="mb-2"><a href="{{ url_for('privacy_policy') }}"
+                            class="text-decoration-none text-secondary" style="transition: color 0.3s;"
+                            onmouseover="this.style.color='#ffffff'" onmouseout="this.style.color='#6c757d'">Privacy
+                            Policy</a></li>
+                    <li class="mb-2"><a href="{{ url_for('terms') }}" class="text-decoration-none text-secondary"
+                            style="transition: color 0.3s;" onmouseover="this.style.color='#ffffff'"
+                            onmouseout="this.style.color='#6c757d'">Terms and Conditions</a></li>
+                    <li class="mb-2"><a href="{{ url_for('about') }}" class="text-decoration-none text-secondary"
+                            style="transition: color 0.3s;" onmouseover="this.style.color='#ffffff'"
+                            onmouseout="this.style.color='#6c757d'">About Us</a></li>
+                </ul>
+            </div>
+
+            <!-- Contact Column -->
+            <div class="col-lg-4">
+                <h5 class="fw-bold mb-3 text-white">Contact Us</h5>
+                <p class="small text-secondary mb-3" style="line-height: 1.5;">
+                    If you face any issue, then this is more our problem than yours. Your presence on my website is
+                    enough for us. Please send your query; we always try to reply as soon as possible.
+                </p>
+                <button type="button" class="btn btn-outline-primary w-100" data-bs-toggle="modal"
+                    data-bs-target="#contactModal">
+                    <i class="fas fa-envelope me-2"></i> Send us a message
+                </button>
+            </div>
+        </div>
+
+        <hr class="border-secondary mt-3 mb-3" style="opacity: 0.2;">
+
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-center small text-secondary pb-2">
+            <div class="mb-2 mb-md-0">&copy; 2026 Face Attendance System. All rights reserved.</div>
+            <div class="text-center text-md-end">
+                This is an <a href="https://github.com/rajpratham1/Face-Recognition-Attendance-System" target="_blank"
+                    class="text-primary text-decoration-none fw-medium hover-white" style="transition: color 0.3s;"
+                    onmouseover="this.style.color='#ffffff'"
+                    onmouseout="this.style.color='var(--primary-color)'">open-source project <i
+                        class="fab fa-github"></i></a> built with ❤️.
+            </div>
+        </div>
+    </div>
+</footer>
+
+<!-- Contact Form Modal -->
+<div class="modal fade" id="contactModal" tabindex="-1" aria-labelledby="contactModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg" style="border-radius: 16px;">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold" id="contactModalLabel" style="color: var(--dark-color);">Contact Support
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form action="https://formsubmit.co/shrivastavapratham40@gmail.com" method="POST" id="contactForm">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted mb-1">Your Name</label>
+                            <input type="text" name="name" class="form-control bg-light" required
+                                style="border-radius: 10px; border: 1px solid rgba(0,0,0,0.05);">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small text-muted mb-1">Your Email</label>
+                            <input type="email" name="email" class="form-control bg-light" required
+                                style="border-radius: 10px; border: 1px solid rgba(0,0,0,0.05);">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label small text-muted mb-1">Message</label>
+                            <textarea name="message" class="form-control bg-light" rows="4" required
+                                style="border-radius: 10px; border: 1px solid rgba(0,0,0,0.05);"></textarea>
+                        </div>
+
+                        <!-- Mathematical Captcha -->
+                        <div class="col-12 d-flex align-items-center gap-3">
+                            <div class="d-flex align-items-center flex-grow-1 border rounded bg-light px-3 py-2"
+                                style="border-color: rgba(0,0,0,0.05) !important;">
+                                <span class="text-muted small me-2"><i class="fas fa-shield-alt"></i> Verify:</span>
+                                <span id="captcha-question" class="fw-bold me-2"
+                                    style="color: var(--dark-color);"></span>
+                                <input type="number" id="captcha-answer" class="form-control form-control-sm"
+                                    placeholder="=" required style="width: 60px;">
+                            </div>
+                        </div>
+
+                        <!-- Hidden fields for FormSubmit configuration -->
+                        <input type="hidden" name="_captcha" value="false">
+                        <input type="hidden" name="_template" value="table">
+                        <input type="hidden" name="_subject" value="New Contact Message from Face Attendance">
+
+                        <div class="col-12 mt-4">
+                            <button type="submit" class="btn btn-custom w-100 py-2"
+                                style="border-radius: 10px; font-weight: 600;">Send Message <i
+                                    class="fas fa-paper-plane ms-2"></i></button>
+                        </div>
+                    </div>
+                </form>
+                <div id="formSuccessMessage"
+                    style="display: none; border-radius: 12px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);"
+                    class="p-4 text-center mt-2">
+                    <i class="fas fa-check-circle text-success mb-3"
+                        style="font-size: 3rem; animation: bounceIn 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);"></i>
+                    <h5 class="text-success fw-bold mb-2">Message Sent!</h5>
+                    <p class="text-muted small mb-0">We've received your message and will get back to you shortly.</p>
+                    <button type="button" class="btn btn-outline-success btn-sm mt-3"
+                        data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    @keyframes bounceIn {
+        0% {
+            transform: scale(0.3);
+            opacity: 0;
+        }
+
+        50% {
+            transform: scale(1.05);
+            opacity: 1;
+        }
+
+        70% {
+            transform: scale(0.9);
+        }
+
+        100% {
+            transform: scale(1);
+        }
+    }
+
+    .form-control::placeholder {
+        color: #6c757d;
+        opacity: 1;
+    }
+
+    .form-control:focus {
+        box-shadow: none;
+        border-color: var(--primary-color);
+    }
+</style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        const form = document.getElementById('contactForm');
+        const questionSpan = document.getElementById('captcha-question');
+        const answerInput = document.getElementById('captcha-answer');
+        const successMessage = document.getElementById('formSuccessMessage');
+        const submitBtn = form.querySelector('button[type="submit"]');
+
+        let num1, num2, expectedSum;
+
+        function generateCaptcha() {
+            num1 = Math.floor(Math.random() * 10) + 1;
+            num2 = Math.floor(Math.random() * 10) + 1;
+            expectedSum = num1 + num2;
+            if (questionSpan) questionSpan.textContent = `${num1} + ${num2}`;
+            if (answerInput) answerInput.value = '';
+        }
+
+        if (form && questionSpan && answerInput) {
+            generateCaptcha();
+
+            form.addEventListener('submit', function (e) {
+                e.preventDefault(); // Stop normal redirection
+
+                if (parseInt(answerInput.value) !== expectedSum) {
+                    alert('Incorrect math CAPTCHA answer. Please try again.');
+                    generateCaptcha();
+                    return;
+                }
+
+                // Show loading state
+                const originalBtnHtml = submitBtn.innerHTML;
+                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+                submitBtn.disabled = true;
+
+                // Submit via AJAX
+                const formData = new FormData(form);
+                fetch(form.action, {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                }).then(response => {
+                    if (response.ok) {
+                        form.style.display = 'none';
+                        successMessage.style.display = 'block';
+                    } else {
+                        throw new Error('Network response was not ok.');
+                    }
+                }).catch(error => {
+                    alert('There was a problem sending your message. Please try again.');
+                    submitBtn.innerHTML = originalBtnHtml;
+                    submitBtn.disabled = false;
+                });
+            });
+        }
+    });
+</script>
 {% endblock %}

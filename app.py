@@ -420,6 +420,18 @@ def inject_geo_vars():
 def index():
     return render_template("index.html")
 
+@app.route("/privacy-policy")
+def privacy_policy():
+    return render_template("privacy_policy.html")
+
+@app.route("/terms-and-conditions")
+def terms():
+    return render_template("terms_and_conditions.html")
+
+@app.route("/about-us")
+def about():
+    return render_template("about_us.html")
+
 
 @app.route("/register", methods=["GET", "POST"])
 @limiter.limit("20 per hour")

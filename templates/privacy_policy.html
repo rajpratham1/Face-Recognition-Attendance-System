@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center reveal-up">
+    <div class="col-lg-10">
+        <div class="glass-card p-5">
+            <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-secondary mb-4"><i class="fas fa-arrow-left me-2"></i> Back to Home</a>
+            <h1 class="display-6 fw-bold mb-4" style="color: var(--primary-color);">Privacy Policy</h1>
+            <p class="text-muted mb-4">Last updated: {{ range(2025, 2027) | random }}</p>
+            
+            <section class="mb-5">
+                <h3 class="h5 fw-bold mb-3">1. Introduction</h3>
+                <p class="text-muted" style="line-height: 1.8;">
+                    Welcome to the Face Attendance System. We are committed to protecting your personal information and your right to privacy. 
+                    This Privacy Policy explains how we collect, use, and safeguard your data when you use our facial recognition and location-based attendance platform.
+                </p>
+            </section>
+
+            <section class="mb-5">
+                <h3 class="h5 fw-bold mb-3">2. Data We Collect</h3>
+                <p class="text-muted" style="line-height: 1.8;">
+                    <strong>Biometric Data:</strong> During registration, we map your facial features to generate a 128-dimensional mathematical descriptor vector. <strong>We do not store your actual photos.</strong> Only this mathematical vector is securely stored and used for matching when you mark attendance.
+                    <br><br>
+                    <strong>Location Data:</strong> When you mark or host an attendance session, we collect your GPS coordinates to verify your presence within the designated Invertis University Campus geofence. This location data is recorded strictly for the duration and validation of the attendance session.
+                    <br><br>
+                    <strong>Device Information:</strong> We may collect your device identifier, IP address, and browser agent to prevent fraud and ensure session integrity.
+                </p>
+            </section>
+
+            <section class="mb-5">
+                <h3 class="h5 fw-bold mb-3">3. How We Use Your Data</h3>
+                <p class="text-muted" style="line-height: 1.8;">
+                    Your data is solely used to:
+                </p>
+                <ul class="text-muted" style="line-height: 1.8;">
+                    <li>Verify your identity accurately using facial vectors.</li>
+                    <li>Ensure you are physically present in the authorized classroom or campus via geofencing.</li>
+                    <li>Generate accurate attendance logs for teachers and administrators.</li>
+                    <li>Maintain the security and integrity of the attendance system against spoofing.</li>
+                </ul>
+            </section>
+
+            <section class="mb-4">
+                <h3 class="h5 fw-bold mb-3">4. Data Security</h3>
+                <p class="text-muted" style="line-height: 1.8;">
+                    We implement enterprise-grade security measures to protect your biometric and location data. Your facial descriptors are encrypted and cannot be reverse-engineered back into a photograph. We restrict access to attendance records strictly to authorized teaching and administrative personnel.
+                </p>
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}

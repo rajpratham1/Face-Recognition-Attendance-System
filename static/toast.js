@@ -6,7 +6,15 @@
 class ToastNotification {
     constructor() {
         this.container = null;
-        this.init();
+        this.pendingToasts = [];
+        this.initialized = false;
+        
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.init());
+        } else {
+            this.init();
+        }
     }
 
     init() {
@@ -19,6 +27,14 @@ class ToastNotification {
         } else {
             this.container = document.getElementById('toast-container');
         }
+        
+        this.initialized = true;
+        
+        // Show any pending toasts
+        this.pendingToasts.forEach(({ message, type, duration }) => {
+            this.show(message, type, duration);
+        });
+        this.pendingToasts = [];
     }
 
     /**
@@ -28,6 +44,12 @@ class ToastNotification {
      * @param {number} duration - Duration in milliseconds (default: 4000)
      */
     show(message, type = 'info', duration = 4000) {
+        // If not initialized yet, queue the toast
+        if (!this.initialized) {
+            this.pendingToasts.push({ message, type, duration });
+            return null;
+        }
+        
         const toast = document.createElement('div');
         toast.className = `toast toast-${type} toast-enter`;
         
@@ -103,6 +125,11 @@ class ToastNotification {
      * Show a loading toast (doesn't auto-dismiss)
      */
     loading(message = 'Loading...') {
+        // If not initialized yet, return null
+        if (!this.initialized) {
+            return null;
+        }
+        
         const toast = document.createElement('div');
         toast.className = 'toast toast-loading toast-enter';
         
@@ -127,6 +154,8 @@ class ToastNotification {
      * Clear all toasts
      */
     clearAll() {
+        if (!this.initialized || !this.container) return;
+        
         const toasts = this.container.querySelectorAll('.toast');
         toasts.forEach(toast => this.remove(toast));
     }

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center reveal-up">
+    <div class="col-lg-10">
+        <div class="glass-card p-5 text-center position-relative">
+            <a href="{{ url_for('index') }}" class="btn btn-sm btn-outline-secondary position-absolute top-0 start-0 m-4"><i class="fas fa-arrow-left me-2"></i> Back</a>
+            <div class="mb-4 d-flex justify-content-center mt-3">
+                <div style="width: 80px; height: 80px; background: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);">
+                    <img src="{{ url_for('static', filename='logo.svg') }}" alt="Logo" style="width: 45px; height: auto;">
+                </div>
+            </div>
+            <h1 class="display-6 fw-bold mb-3" style="color: var(--dark-color);">About Us</h1>
+            <p class="lead text-muted mb-5" style="max-width: 700px; margin: 0 auto;">
+                Revolutionizing classroom attendance through secure, AI-powered biometric verification and precise geolocation.
+            </p>
+            
+            <div class="row text-start g-4 mt-2">
+                <div class="col-md-6">
+                    <div class="p-4 h-100 rounded" style="background: rgba(26, 115, 232, 0.05); border: 1px solid rgba(26, 115, 232, 0.1);">
+                        <h4 class="fw-bold mb-3 h5 text-primary">Our Mission</h4>
+                        <p class="text-muted" style="line-height: 1.7;">
+                            We built the Face Attendance System to eliminate proxy attendance and streamline the administrative burden on teachers. By combining state-of-the-art face matching algorithms with strict campus geofencing, we ensure that attendance records are 100% trustworthy, transparent, and effortlessly managed.
+                        </p>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="p-4 h-100 rounded" style="background: rgba(16, 185, 129, 0.05); border: 1px solid rgba(16, 185, 129, 0.1);">
+                        <h4 class="fw-bold mb-3 h5 text-success">The Technology</h4>
+                        <p class="text-muted" style="line-height: 1.7;">
+                            Our platform utilizes a 128-dimensional facial descriptor vector system running purely on the edge device for privacy. It cross-references user identity with real-time GPS coordinates, ensuring that students can only mark their presence when they are genuinely inside the physical classroom environment.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-5" style="opacity: 0.1;">
+            
+            <h4 class="fw-bold mb-4">Key Benefits</h4>
+            <div class="row text-start g-3">
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-shield-alt text-primary me-3 fs-4"></i>
+                        <h6 class="mb-0 fw-bold">Zero Proxy</h6>
+                    </div>
+                    <p class="small text-muted">Biometric guarantees that the person marking attendance is the registered student.</p>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-map-marker-alt text-danger me-3 fs-4"></i>
+                        <h6 class="mb-0 fw-bold">Location Locked</h6>
+                    </div>
+                    <p class="small text-muted">Geofencing enforces physical presence within the campus boundary.</p>
+                </div>
+                <div class="col-md-4">
+                    <div class="d-flex align-items-center mb-3">
+                        <i class="fas fa-bolt text-warning me-3 fs-4"></i>
+                        <h6 class="mb-0 fw-bold">Lightning Fast</h6>
+                    </div>
+                    <p class="small text-muted">A class of 60 students can securely mark attendance simultaneously in seconds.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

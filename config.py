@@ -95,3 +95,11 @@ class Config:
     LIVENESS_BLINK_THRESHOLD = _env_float('LIVENESS_BLINK_THRESHOLD', 0.25)
     LIVENESS_MOVEMENT_THRESHOLD = _env_int('LIVENESS_MOVEMENT_THRESHOLD', 15)
     LIVENESS_QUALITY_THRESHOLD = _env_float('LIVENESS_QUALITY_THRESHOLD', 0.6)
+
+    # ─── Face Recognition Thresholds ────────────────────────────────────────────
+    # Lower value = stricter matching (more secure, may reject valid users)
+    # Higher value = looser matching (less secure, may accept wrong users)
+    # Recommended: 0.45-0.50 for production
+    FACE_RECOGNITION_THRESHOLD = _env_float('FACE_RECOGNITION_THRESHOLD', 0.45)
+    FACE_DUPLICATE_THRESHOLD = _env_float('FACE_DUPLICATE_THRESHOLD', 0.50)
+    FACE_SPOOFING_THRESHOLD = _env_float('FACE_SPOOFING_THRESHOLD', 0.80)

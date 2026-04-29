@@ -681,7 +681,10 @@ def kiosk_mark():
 
     unknown_encoding = np.array(normalized_descriptor, dtype=float)
     face_distance = float(np.linalg.norm(known_encoding - unknown_encoding))
-    if face_distance >= 0.55:
+    
+    FACE_THRESHOLD = app.config.get('FACE_RECOGNITION_THRESHOLD', 0.45)
+    
+    if face_distance >= FACE_THRESHOLD:
         return jsonify({"success": False, "message": "Face verification failed for the selected student."}), 400
 
     ip_address = (request.headers.get("X-Forwarded-For", request.remote_addr) or "").split(",")[0].strip()[:64]
@@ -864,7 +867,7 @@ def save_face():
     # Batch-compare new face against all registered faces using numpy,
     # preventing one person creating multiple accounts (student/teacher).
     new_vec = np.array(normalized_descriptor)
-    FACE_DUPLICATE_THRESHOLD = 0.50
+    FACE_DUPLICATE_THRESHOLD = app.config.get('FACE_DUPLICATE_THRESHOLD', 0.50)
     existing_users = User.query.filter(
         User.face_registered.is_(True),
         User.face_encoding.isnot(None),
@@ -964,7 +967,9 @@ def mark_attendance():
         unknown_encoding = np.array(descriptor)
         distance = float(np.linalg.norm(known_encoding - unknown_encoding))
 
-        if distance < 0.6:
+        FACE_THRESHOLD = app.config.get('FACE_RECOGNITION_THRESHOLD', 0.45)
+        
+        if distance < FACE_THRESHOLD:
             local_now = now_local()
             new_attendance = Attendance(
                 user_id=current_user.id,
@@ -1271,17 +1276,40 @@ def mark_session_attendance():
     unknown_encoding = np.array(descriptor)
     distance = float(np.linalg.norm(known_encoding - unknown_encoding))
 
-    # Detect possible spoofing attack
-    if distance > 0.8:
-        app.logger.warning("🚨 Possible spoofing attempt (photo attack)")
+    FACE_THRESHOLD = app.config.get('FACE_RECOGNITION_THRESHOLD', 0.45)
+    SPOOFING_THRESHOLD = app.config.get('FACE_SPOOFING_THRESHOLD', 0.80)
 
-    # UNKNOWN PERSON ALERT
-    if distance >= 0.6:
+    # Detect possible spoofing attack (photo/video)
+    if distance > SPOOFING_THRESHOLD:
+        app.logger.warning(
+            "🚨 Possible spoofing attempt detected: user_id=%s, session_id=%s, distance=%.4f",
+            current_user.id, session.id, distance
+        )
         record_attempt(
             session.id,
             current_user.id,
             False,
-            "Unknown person detected",
+            "Possible spoofing attempt (photo attack)",
+            lat,
+            lng,
+            distance,
+            device_hash,
+            ip_address,
+            user_agent
+        )
+        db.session.commit()
+        return jsonify({
+            "success": False,
+            "message": "⚠ Spoofing attempt detected! Please use live camera."
+        }), 400
+
+    # UNKNOWN PERSON ALERT - Face doesn't match registered face
+    if distance >= FACE_THRESHOLD:
+        record_attempt(
+            session.id,
+            current_user.id,
+            False,
+            "Face verification failed - unknown person",
             lat,
             lng,
             distance,
@@ -1293,16 +1321,21 @@ def mark_session_attendance():
         db.session.commit()
 
         app.logger.warning(
-            f"⚠ Unknown face detected in session {session.id} for user {current_user.id}"
+            "⚠ Face verification failed: user_id=%s, session_id=%s, distance=%.4f (threshold=%.2f)",
+            current_user.id, session.id, distance, FACE_THRESHOLD
         )
 
         return jsonify({
             "success": False,
-            "message": "⚠ Unknown face detected! Attendance blocked."
+            "message": f"⚠ Face verification failed! Your face doesn't match the registered face. (Distance: {distance:.2f})"
         }), 400
 
 
     # FACE VERIFIED → MARK ATTENDANCE
+    app.logger.info(
+        "✅ Face verified successfully: user_id=%s, session_id=%s, distance=%.4f",
+        current_user.id, session.id, distance
+    )
     entry = SessionAttendance(
         session_id=session.id,
         student_id=current_user.id,

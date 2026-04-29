@@ -133,6 +133,11 @@
                     </div>
                     <a href="{{ url_for('teacher_session_roster', session_id=session.id) }}" class="btn btn-sm btn-outline-primary mt-1">Open Roster</a>
                     {% if session.is_active and session.ends_at >= now %}
+                    <a href="{{ url_for('kiosk', session_id=session.id) }}" class="btn btn-sm btn-success mt-1" target="_blank" title="Open auto-scan kiosk on this device">
+                        <i class="fas fa-camera me-1"></i> Launch Kiosk 🎥
+                    </a>
+                    {% endif %}
+                    {% if session.is_active and session.ends_at >= now %}
                     <form method="POST" action="{{ url_for('close_session', session_id=session.id) }}" class="mt-2">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button class="btn btn-sm btn-outline-danger" type="submit">Close Session</button>

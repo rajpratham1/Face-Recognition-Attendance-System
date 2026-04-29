@@ -102,6 +102,34 @@ def handle_csrf_error(error):
     return redirect(url_for("index"))
 
 
+@app.errorhandler(404)
+def handle_404(error):
+    """Handle 404 Not Found errors gracefully."""
+    if request.path.startswith("/api/"):
+        return jsonify({"success": False, "message": "Resource not found."}), 404
+    flash("Page not found.", "warning")
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(403)
+def handle_403(error):
+    """Handle 403 Forbidden errors gracefully."""
+    if request.path.startswith("/api/"):
+        return jsonify({"success": False, "message": "Access denied."}), 403
+    flash("Access denied.", "danger")
+    return redirect(url_for("index"))
+
+
+@app.errorhandler(500)
+def handle_500(error):
+    """Handle 500 Internal Server errors gracefully."""
+    app.logger.error("500 error: %s", str(error), exc_info=True)
+    if request.path.startswith("/api/") or request.is_json:
+        return jsonify({"success": False, "message": "Server error. Please try again later."}), 500
+    flash("An unexpected error occurred. Please try again.", "danger")
+    return redirect(url_for("index"))
+
+
 def now_utc_naive():
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -384,9 +412,23 @@ def ensure_schema_compatibility():
 
 @app.after_request
 def add_header(response):
+    """Add security headers and cache control to all responses."""
+    # Prevent caching of sensitive content (override for static assets if needed)
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, post-check=0, pre-check=0, max-age=0'
     response.headers['Pragma'] = 'no-cache'
     response.headers['Expires'] = '-1'
+    
+    # Security headers
+    response.headers['X-Content-Type-Options'] = 'nosniff'  # Prevent MIME type sniffing
+    response.headers['X-Frame-Options'] = 'SAMEORIGIN'  # Prevent clickjacking
+    response.headers['X-XSS-Protection'] = '1; mode=block'  # Enable XSS protection
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'  # Control referrer info
+    response.headers['Permissions-Policy'] = 'geolocation=(self), microphone=(), camera=(self)'  # Feature permissions
+    
+    # Strict Transport Security (only in production)
+    if app.config.get('FLASK_ENV') == 'production':
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    
     return response
 
 
@@ -585,6 +627,7 @@ def kiosk_mark():
 @app.route("/register", methods=["GET", "POST"])
 @limiter.limit("20 per hour")
 def register():
+    """Register a new user account with face recognition setup."""
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
@@ -597,46 +640,82 @@ def register():
         role = request.form.get("role", "student")
         consent = request.form.get("consent") == "yes"
 
-        if role not in ["teacher", "student"]:
-            flash("Invalid role selected", "danger")
+        # Validate name
+        if not name or len(name) < 2 or len(name) > 100:
+            flash("Name must be between 2 and 100 characters.", "warning")
             return redirect(url_for("register"))
+        
+        # Validate email format (basic check)
+        if not email or "@" not in email or "." not in email:
+            flash("Please enter a valid email address.", "warning")
+            return redirect(url_for("register"))
+        
+        # Validate department
+        if not department or len(department) < 2:
+            flash("Department is required.", "warning")
+            return redirect(url_for("register"))
+        
+        # Validate role
+        if role not in ["teacher", "student"]:
+            flash("Invalid role selected.", "danger")
+            return redirect(url_for("register"))
+        
+        # Validate consent
         if not consent:
             flash("You must accept biometric and privacy consent to continue.", "warning")
             return redirect(url_for("register"))
+        
+        # Validate password strength
         if len(password) < 8:
             flash("Password must be at least 8 characters long.", "warning")
             return redirect(url_for("register"))
         if not any(c.isdigit() for c in password):
             flash("Password must contain at least one number.", "warning")
             return redirect(url_for("register"))
-        if User.query.filter_by(email=email).first():
-            flash("Email already registered", "danger")
+        if not any(c.isupper() for c in password):
+            flash("Password must contain at least one uppercase letter.", "warning")
             return redirect(url_for("register"))
-            
+        
+        # Check for existing email
+        if User.query.filter_by(email=email).first():
+            flash("Email already registered.", "danger")
+            return redirect(url_for("register"))
+        
+        # Validate student-specific fields
         if role == "student" and not (college_id and section and year and semester):
             flash("Students must provide College ID, Section, Year, and Semester.", "warning")
             return redirect(url_for("register"))
 
-        new_user = User(
-            name=name,
-            email=email,
-            department=department,
-            college_id=college_id if role == "student" else None,
-            section=section if role == "student" else None,
-            year=year if role == "student" else None,
-            semester=semester if role == "student" else None,
-            role=role,
-            password_hash=generate_password_hash(password, method="scrypt"),
-        )
-        db.session.add(new_user)
-        db.session.commit()
+        # Create new user
+        try:
+            new_user = User(
+                name=name,
+                email=email,
+                department=department,
+                college_id=college_id if role == "student" else None,
+                section=section if role == "student" else None,
+                year=year if role == "student" else None,
+                semester=semester if role == "student" else None,
+                role=role,
+                password_hash=generate_password_hash(password, method="scrypt"),
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            app.logger.info("New user registered: email=%s, role=%s", email, role)
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error("Registration error: %s", str(e))
+            flash("Registration failed. Please try again.", "danger")
+            return redirect(url_for("register"))
 
+        # Backup encrypted credentials
         try:
             backup_user_credentials(app, new_user.id, new_user.email, password)
         except Exception:
             app.logger.exception("Encrypted credential backup failed for user_id=%s", new_user.id)
 
         login_user(new_user)
+        flash("Registration successful! Please register your face to continue.", "success")
         return redirect(url_for("register_face"))
 
     return render_template("register.html")
@@ -651,10 +730,24 @@ def register_face():
 @app.route("/save_face", methods=["POST"])
 @login_required
 @limiter.limit("30 per hour")
-# This function saves user's face encoding after registration
-# Face data is stored as a 128-dimension vector
-# It also checks for duplicate faces across ALL users (any role)
 def save_face():
+    """
+    Save a user's facial encoding (128-dimensional vector).
+    
+    This function:
+    1. Validates the face descriptor format and values
+    2. Checks for duplicate faces across all users (prevents multi-account abuse)
+    3. Stores the face encoding in the database
+    
+    Returns:
+        - 200 with success if face saved
+        - 400 if validation fails
+        - 409 if duplicate face detected
+        - 500 if database save fails
+    """
+    # This function saves user's face encoding after registration
+    # Face data is stored as a 128-dimension vector
+    # It also checks for duplicate faces across ALL users (any role)
     data = request.json or {}
     descriptor = data.get("descriptor")
 
@@ -734,9 +827,20 @@ def save_face():
 @app.route("/mark_attendance", methods=["GET", "POST"])
 @login_required
 @limiter.limit("20 per minute")
-# This function handles attendance marking
-# It verifies face and location before marking attendance
 def mark_attendance():
+    """
+    Mark daily attendance with face verification and location check.
+    
+    For Students:
+    - Shows list of active class sessions
+    
+    For Teachers:
+    - Accepts POST requests with face descriptor and location
+    - Verifies user's face against stored encoding
+    - Validates user is within campus bounds
+    - Prevents duplicate attendance marking
+    - Sends email notification on success
+    """
     if not current_user.face_registered:
         flash("Please register your face first!", "warning")
         return redirect(url_for("register_face"))
@@ -751,7 +855,6 @@ def mark_attendance():
         lat = data.get("lat")
         lng = data.get("lng")
 
-# This function checks if user is inside campus using geolocation
         if not is_within_invertis(lat, lng):
             return jsonify({"success": False, "message": "Attendance can only be marked within Invertis University campus!"}), 400
 
@@ -972,9 +1075,30 @@ def active_sessions():
 @app.route("/api/session_attendance/mark", methods=["POST"])
 @login_required
 @limiter.limit("10 per minute")
-# This API endpoint marks attendance for a class session
-# It checks face, location, session status, and prevents duplicates
 def mark_session_attendance():
+    """
+    Mark attendance for a live class session via API endpoint.
+    
+    This endpoint:
+    1. Validates student enrollment in course
+    2. Checks session is currently active
+    3. Verifies student is within classroom geofence
+    4. Performs face recognition verification
+    5. Records attendance attempt and real face mismatch
+    6. Sends email notification on success
+    7. Logs device/IP information for security auditing
+    
+    Request JSON Parameters:
+        - session_id: ID of the class session
+        - descriptor: 128-dim face vector from face.js
+        - lat/lng: Student's current coordinates
+        - device_id: Browser device identifier (hashed to device_hash)
+    
+    Returns:
+        - 200 with success if attendance marked
+        - 400 if validation fails
+        - 403 if unauthorized
+    """
     if current_user.role != "student":
         return jsonify({"success": False, "message": "Only students can use session attendance."}), 403
 

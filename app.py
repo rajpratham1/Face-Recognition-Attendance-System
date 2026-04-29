@@ -433,6 +433,155 @@ def about():
     return render_template("about_us.html")
 
 
+# ── Live Classroom Kiosk Mode ─────────────────────────────────────────────────
+
+@app.route("/kiosk/<int:session_id>")
+@login_required
+def kiosk(session_id):
+    """Renders the fullscreen auto-scan kiosk for a teacher's active session."""
+    if current_user.role not in ("teacher", "admin"):
+        flash("Only teachers can access the Kiosk scanner.", "danger")
+        return redirect(url_for("dashboard"))
+    session = ClassSession.query.filter_by(id=session_id, teacher_id=current_user.id).first_or_404()
+    return render_template("kiosk.html", session=session)
+
+
+@app.route("/api/kiosk_data/<int:session_id>")
+@login_required
+def kiosk_data(session_id):
+    """Returns JSON with all enrolled students and their face descriptors for in-browser matching."""
+    if current_user.role not in ("teacher", "admin"):
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    session = ClassSession.query.filter_by(id=session_id, teacher_id=current_user.id).first_or_404()
+
+    # Get enrolled students who have registered faces
+    enrolled_students = (
+        User.query.join(Enrollment, Enrollment.student_id == User.id)
+        .filter(
+            Enrollment.course_id == session.course_id,
+            User.role == "student",
+            User.face_registered.is_(True),
+            User.face_encoding.isnot(None),
+        )
+        .all()
+    )
+
+    # Get already-marked student IDs for this session
+    marked_ids = {
+        row.student_id
+        for row in SessionAttendance.query.filter_by(session_id=session_id).all()
+    }
+
+    students_data = []
+    for student in enrolled_students:
+        try:
+            descriptor = json.loads(student.face_encoding)
+            if isinstance(descriptor, list) and len(descriptor) == 128:
+                students_data.append({
+                    "id": student.id,
+                    "name": student.name,
+                    "college_id": student.college_id or "",
+                    "descriptor": descriptor,
+                    "already_marked": student.id in marked_ids,
+                })
+        except Exception:
+            continue
+
+    now = now_utc_naive()
+    is_active = bool(session.is_active and session.starts_at <= now <= session.ends_at)
+
+    return jsonify({
+        "success": True,
+        "session": {
+            "id": session.id,
+            "title": session.title,
+            "course_code": session.course_code,
+            "room": session.room,
+            "is_active": is_active,
+        },
+        "students": students_data,
+    })
+
+
+@app.route("/api/kiosk_mark", methods=["POST"])
+@login_required
+@limiter.limit("120 per minute")
+def kiosk_mark():
+    """Marks a student present via the kiosk. Called by teacher-operated laptop so geofence is bypassed."""
+    if current_user.role not in ("teacher", "admin"):
+        return jsonify({"success": False, "message": "Unauthorized"}), 403
+
+    data = request.json or {}
+    session_id = data.get("session_id")
+    student_id = data.get("student_id")
+    face_distance = data.get("face_distance")
+
+    if not session_id or not student_id:
+        return jsonify({"success": False, "message": "Missing session or student ID."}), 400
+
+    session = ClassSession.query.filter_by(id=session_id, teacher_id=current_user.id).first()
+    if not session:
+        return jsonify({"success": False, "message": "Session not found."}), 404
+
+    now = now_utc_naive()
+    if not (session.is_active and session.starts_at <= now <= session.ends_at):
+        return jsonify({"success": False, "message": "Session is no longer active."}), 400
+
+    student = User.query.filter_by(id=student_id, role="student").first()
+    if not student:
+        return jsonify({"success": False, "message": "Student not found."}), 404
+
+    # Prevent duplicate marking
+    already_marked = SessionAttendance.query.filter_by(session_id=session_id, student_id=student_id).first()
+    if already_marked:
+        return jsonify({"success": False, "already_marked": True, "message": f"{student.name} already marked."})
+
+    ip_address = (request.headers.get("X-Forwarded-For", request.remote_addr) or "").split(",")[0].strip()[:64]
+
+    entry = SessionAttendance(
+        session_id=session.id,
+        student_id=student_id,
+        latitude=session.location_lat,
+        longitude=session.location_lng,
+        face_distance=face_distance,
+        ip_address=ip_address,
+        user_agent="Kiosk-AutoScan/1.0",
+    )
+    db.session.add(entry)
+
+    # Also update the daily attendance record
+    local_now = now_local()
+    today_date = local_now.date()
+    daily_exists = Attendance.query.filter_by(user_id=student_id, date=today_date).first()
+    if not daily_exists:
+        daily_entry = Attendance(
+            user_id=student_id,
+            date=today_date,
+            time=local_now.time().replace(microsecond=0),
+            latitude=session.location_lat,
+            longitude=session.location_lng,
+        )
+        db.session.add(daily_entry)
+
+    record_attempt(
+        session.id, student_id, True, "Kiosk auto-scan",
+        session.location_lat, session.location_lng, face_distance,
+        None, ip_address, "Kiosk-AutoScan/1.0"
+    )
+    db.session.commit()
+
+    # Non-blocking email notification
+    threading.Thread(
+        target=send_attendance_email,
+        args=(app, student.name, student.email, session.course_code, session.title, datetime.now(timezone.utc)),
+        daemon=True,
+    ).start()
+
+    return jsonify({"success": True, "message": f"✅ {student.name} marked present!", "student_name": student.name})
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.route("/register", methods=["GET", "POST"])
 @limiter.limit("20 per hour")
 def register():

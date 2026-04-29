@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="glass-card mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h2 class="mb-0">📅 My Attendance Calendar</h2>
+                <button class="btn btn-outline-primary btn-sm" onclick="calendar.goToToday()">
+                    Today
+                </button>
+            </div>
+            <p class="text-muted">Visual overview of your attendance history</p>
+        </div>
+
+        <div class="calendar-container" id="attendance-calendar"></div>
+
+        <!-- Attendance Details Modal -->
+        <div class="modal fade" id="attendanceModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Attendance Details</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body" id="modal-body-content">
+                        <!-- Content will be populated by JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Fetch attendance data
+    async function fetchAttendanceData() {
+        try {
+            showLoading();
+            const response = await fetch('/api/my_attendance_calendar');
+            const data = await response.json();
+            hideLoading();
+            return data;
+        } catch (error) {
+            hideLoading();
+            toast.error('Failed to load attendance data');
+            console.error('Error fetching attendance:', error);
+            return [];
+        }
+    }
+
+    // Initialize calendar
+    let calendar;
+    fetchAttendanceData().then(attendanceData => {
+        calendar = new AttendanceCalendar('attendance-calendar', {
+            attendanceData: attendanceData,
+            showStats: true,
+            showLegend: true,
+            onDayClick: function(dateStr, attendance) {
+                showAttendanceDetails(dateStr, attendance);
+            }
+        });
+    });
+
+    // Show attendance details in modal
+    function showAttendanceDetails(dateStr, attendance) {
+        const modal = new bootstrap.Modal(document.getElementById('attendanceModal'));
+        const modalBody = document.getElementById('modal-body-content');
+        
+        const date = new Date(dateStr);
+        const formattedDate = date.toLocaleDateString('en-US', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+
+        if (attendance) {
+            const statusBadge = attendance.status === 'present' 
+                ? '<span class="badge bg-success">Present</span>' 
+                : '<span class="badge bg-danger">Absent</span>';
+            
+            modalBody.innerHTML = `
+                <div class="text-center mb-3">
+                    <h4>${formattedDate}</h4>
+                    <div class="mt-2">${statusBadge}</div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-6">
+                        <strong>Time:</strong>
+                    </div>
+                    <div class="col-6">
+                        ${attendance.time || 'N/A'}
+                    </div>
+                </div>
+                ${attendance.course_code ? `
+                <div class="row mt-2">
+                    <div class="col-6">
+                        <strong>Course:</strong>
+                    </div>
+                    <div class="col-6">
+                        ${attendance.course_code}
+                    </div>
+                </div>
+                ` : ''}
+                ${attendance.session_title ? `
+                <div class="row mt-2">
+                    <div class="col-6">
+                        <strong>Session:</strong>
+                    </div>
+                    <div class="col-6">
+                        ${attendance.session_title}
+                    </div>
+                </div>
+                ` : ''}
+            `;
+        } else {
+            modalBody.innerHTML = `
+                <div class="text-center">
+                    <h4>${formattedDate}</h4>
+                    <p class="text-muted mt-3">No attendance record for this date</p>
+                </div>
+            `;
+        }
+        
+        modal.show();
+    }
+</script>
+{% endblock %}

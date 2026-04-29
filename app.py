@@ -1925,6 +1925,10 @@ def login():
         
         app.logger.info(f"Login attempt for email: {email}")
         app.logger.info(f"Password length: {len(password)}")
+        
+        # Refresh database session to avoid stale connections
+        db.session.expire_all()
+        
         user = User.query.filter_by(email=email).first()
 
         if user:

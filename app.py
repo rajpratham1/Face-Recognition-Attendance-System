@@ -27,10 +27,12 @@ from email_service import send_attendance_email, send_password_reset_email
 from models import (
     Attendance,
     AttendanceAttempt,
+    BulkEnrollment,
     ClassSession,
     Course,
     Enrollment,
     SessionAttendance,
+    TeacherAssignment,
     User,
     db,
 )
@@ -154,6 +156,113 @@ def now_local():
 
 def today_local_date():
     return now_local().date()
+
+
+def generate_sessions_from_timetable():
+    """
+    Auto-generate class sessions from timetable entries.
+    
+    This function should be called periodically (e.g., via cron job or scheduler).
+    It creates sessions 15 minutes before the scheduled class time.
+    
+    Logic:
+    1. Get current day of week and time
+    2. Find timetable entries for today
+    3. For entries starting in next 15-30 minutes, create session if not exists
+    4. Auto-close sessions that ended 15+ minutes ago
+    """
+    from models import Timetable
+    
+    now = now_local()
+    current_day = now.weekday()  # 0=Monday, 6=Sunday
+    current_time = now.time()
+    
+    # Calculate time window: 15-30 minutes from now
+    window_start = (now + timedelta(minutes=15)).time()
+    window_end = (now + timedelta(minutes=30)).time()
+    
+    # Find timetable entries for today that start in the window
+    timetable_entries = Timetable.query.filter(
+        Timetable.day_of_week == current_day,
+        Timetable.is_active == True,
+        Timetable.start_time >= window_start,
+        Timetable.start_time < window_end
+    ).all()
+    
+    sessions_created = 0
+    sessions_closed = 0
+    
+    for entry in timetable_entries:
+        # Check if session already exists for today
+        today_date = now.date()
+        
+        # Combine date and time for session start/end
+        starts_at_local = datetime.combine(today_date, entry.start_time)
+        ends_at_local = datetime.combine(today_date, entry.end_time)
+        
+        # Convert to UTC naive for database
+        starts_at_utc = starts_at_local.replace(tzinfo=ZoneInfo(app.config["APP_TIMEZONE"])).astimezone(timezone.utc).replace(tzinfo=None)
+        ends_at_utc = ends_at_local.replace(tzinfo=ZoneInfo(app.config["APP_TIMEZONE"])).astimezone(timezone.utc).replace(tzinfo=None)
+        
+        # Check if session already exists
+        existing_session = ClassSession.query.filter(
+            ClassSession.course_id == entry.course_id,
+            ClassSession.teacher_id == entry.teacher_id,
+            ClassSession.section == entry.section,
+            ClassSession.starts_at == starts_at_utc
+        ).first()
+        
+        if not existing_session:
+            # Create new session
+            try:
+                new_session = ClassSession(
+                    title=entry.course.title,
+                    course_code=entry.course.code,
+                    room=entry.room,
+                    course_id=entry.course_id,
+                    section=entry.section,
+                    starts_at=starts_at_utc,
+                    ends_at=ends_at_utc,
+                    teacher_id=entry.teacher_id,
+                    is_active=True,
+                    location_lat=None,  # Will be set when teacher starts session
+                    location_lng=None,
+                    location_radius_meters=app.config["SESSION_LOCATION_RADIUS_METERS"],
+                )
+                db.session.add(new_session)
+                sessions_created += 1
+                
+                app.logger.info(
+                    f"Auto-generated session: {entry.course.code} - Section {entry.section} - {entry.get_day_name()} {entry.start_time}"
+                )
+            except Exception as e:
+                app.logger.error(f"Error creating auto-session: {str(e)}")
+                db.session.rollback()
+                continue
+    
+    # Auto-close sessions that ended 15+ minutes ago
+    close_threshold = now_utc_naive() - timedelta(minutes=15)
+    expired_sessions = ClassSession.query.filter(
+        ClassSession.is_active == True,
+        ClassSession.ends_at < close_threshold
+    ).all()
+    
+    for session in expired_sessions:
+        session.is_active = False
+        sessions_closed += 1
+        app.logger.info(f"Auto-closed session: {session.course_code} - Session ID {session.id}")
+    
+    try:
+        db.session.commit()
+        app.logger.info(f"Auto-session generation complete: {sessions_created} created, {sessions_closed} closed")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error committing auto-sessions: {str(e)}")
+    
+    return {
+        "sessions_created": sessions_created,
+        "sessions_closed": sessions_closed
+    }
 
 
 def password_validation_error(password):
@@ -336,16 +445,63 @@ def teacher_students_query(teacher_id):
     )
 
 
+def get_teacher_assigned_courses(teacher_id):
+    """Get all courses assigned to a teacher (via TeacherAssignment table)"""
+    assignments = TeacherAssignment.query.filter_by(
+        teacher_id=teacher_id,
+        is_active=True
+    ).all()
+    
+    course_ids = [a.course_id for a in assignments]
+    if not course_ids:
+        return []
+    
+    return Course.query.filter(
+        Course.id.in_(course_ids),
+        Course.is_active == True
+    ).order_by(Course.code.asc()).all()
+
+
+def get_teacher_assigned_sections(teacher_id, course_id):
+    """Get sections assigned to a teacher for a specific course"""
+    assignments = TeacherAssignment.query.filter_by(
+        teacher_id=teacher_id,
+        course_id=course_id,
+        is_active=True
+    ).all()
+    
+    return [a.section for a in assignments]
+
+
+def is_teacher_assigned_to_course(teacher_id, course_id, section=None):
+    """Check if teacher is assigned to teach a course (optionally specific section)"""
+    query = TeacherAssignment.query.filter_by(
+        teacher_id=teacher_id,
+        course_id=course_id,
+        is_active=True
+    )
+    
+    if section:
+        query = query.filter_by(section=section)
+    
+    return query.first() is not None
+
+
 def build_session_roster(session):
     enrolled_students = []
     enrolled_by_id = {}
     if session.course_id:
-        enrolled_students = (
+        # Build query for enrolled students
+        query = (
             User.query.join(Enrollment, Enrollment.student_id == User.id)
             .filter(Enrollment.course_id == session.course_id, User.role == "student")
-            .order_by(User.name.asc())
-            .all()
         )
+        
+        # Filter by section if session has a section specified
+        if session.section:
+            query = query.filter(User.section == session.section)
+        
+        enrolled_students = query.order_by(User.name.asc()).all()
         enrolled_by_id = {student.id: student for student in enrolled_students}
 
     marked_entries = []
@@ -440,64 +596,97 @@ def ensure_schema_compatibility():
 
     def _columns(conn, table_name):
         inspector = inspect(conn)
+        # Check if table exists first
+        if not inspector.has_table(table_name):
+            return set()
         return {column["name"] for column in inspector.get_columns(table_name)}
 
     with db.engine.begin() as conn:
+        inspector = inspect(conn)
+        
         # ClassSession table updates
-        class_session_columns = _columns(conn, "class_sessions")
-        if "course_id" not in class_session_columns:
-            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN course_id INTEGER"))
-        if "location_lat" not in class_session_columns:
-            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_lat FLOAT"))
-        if "location_lng" not in class_session_columns:
-            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_lng FLOAT"))
-        if "location_radius_meters" not in class_session_columns:
-            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_radius_meters INTEGER DEFAULT 50"))
-        if "updated_at" not in class_session_columns:
-            conn.execute(text("ALTER TABLE class_sessions ADD COLUMN updated_at DATETIME"))
+        if inspector.has_table("class_sessions"):
+            class_session_columns = _columns(conn, "class_sessions")
+            if "course_id" not in class_session_columns:
+                conn.execute(text("ALTER TABLE class_sessions ADD COLUMN course_id INTEGER"))
+            if "section" not in class_session_columns:
+                conn.execute(text("ALTER TABLE class_sessions ADD COLUMN section VARCHAR(10)"))
+            if "location_lat" not in class_session_columns:
+                conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_lat FLOAT"))
+            if "location_lng" not in class_session_columns:
+                conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_lng FLOAT"))
+            if "location_radius_meters" not in class_session_columns:
+                conn.execute(text("ALTER TABLE class_sessions ADD COLUMN location_radius_meters INTEGER DEFAULT 50"))
+            if "updated_at" not in class_session_columns:
+                conn.execute(text("ALTER TABLE class_sessions ADD COLUMN updated_at DATETIME"))
 
         # SessionAttendance table updates
-        session_attendance_columns = _columns(conn, "session_attendance")
-        if "device_hash" not in session_attendance_columns:
-            conn.execute(text("ALTER TABLE session_attendance ADD COLUMN device_hash VARCHAR(128)"))
-        if "ip_address" not in session_attendance_columns:
-            conn.execute(text("ALTER TABLE session_attendance ADD COLUMN ip_address VARCHAR(64)"))
-        if "user_agent" not in session_attendance_columns:
-            conn.execute(text("ALTER TABLE session_attendance ADD COLUMN user_agent VARCHAR(255)"))
+        if inspector.has_table("session_attendance"):
+            session_attendance_columns = _columns(conn, "session_attendance")
+            if "device_hash" not in session_attendance_columns:
+                conn.execute(text("ALTER TABLE session_attendance ADD COLUMN device_hash VARCHAR(128)"))
+            if "ip_address" not in session_attendance_columns:
+                conn.execute(text("ALTER TABLE session_attendance ADD COLUMN ip_address VARCHAR(64)"))
+            if "user_agent" not in session_attendance_columns:
+                conn.execute(text("ALTER TABLE session_attendance ADD COLUMN user_agent VARCHAR(255)"))
+            if "is_late" not in session_attendance_columns:
+                conn.execute(text("ALTER TABLE session_attendance ADD COLUMN is_late BOOLEAN DEFAULT 0"))
+            if "is_locked" not in session_attendance_columns:
+                conn.execute(text("ALTER TABLE session_attendance ADD COLUMN is_locked BOOLEAN DEFAULT 0"))
         
         # Users table updates
-        users_columns = _columns(conn, "users")
-        if "college_id" not in users_columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN college_id VARCHAR(50)"))
-        if "section" not in users_columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN section VARCHAR(10)"))
-        if "year" not in users_columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN year VARCHAR(10)"))
-        if "semester" not in users_columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN semester VARCHAR(10)"))
-        if "updated_at" not in users_columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN updated_at DATETIME"))
-        if "is_active" not in users_columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
-        if "last_login" not in users_columns:
-            conn.execute(text("ALTER TABLE users ADD COLUMN last_login DATETIME"))
+        if inspector.has_table("users"):
+            users_columns = _columns(conn, "users")
+            if "phone" not in users_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(15)"))
+            if "assignment_status" not in users_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN assignment_status VARCHAR(20) DEFAULT 'pending'"))
+            if "college_id" not in users_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN college_id VARCHAR(50)"))
+            if "section" not in users_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN section VARCHAR(10)"))
+            if "year" not in users_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN year VARCHAR(10)"))
+            if "semester" not in users_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN semester VARCHAR(10)"))
+            if "updated_at" not in users_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN updated_at DATETIME"))
+            if "is_active" not in users_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+            if "last_login" not in users_columns:
+                conn.execute(text("ALTER TABLE users ADD COLUMN last_login DATETIME"))
 
         # Attendance table updates
-        attendance_columns = _columns(conn, "attendance")
-        if "created_at" not in attendance_columns:
-            conn.execute(text("ALTER TABLE attendance ADD COLUMN created_at DATETIME"))
+        if inspector.has_table("attendance"):
+            attendance_columns = _columns(conn, "attendance")
+            if "created_at" not in attendance_columns:
+                conn.execute(text("ALTER TABLE attendance ADD COLUMN created_at DATETIME"))
 
         # Course table updates
-        course_columns = _columns(conn, "courses")
-        if "updated_at" not in course_columns:
-            conn.execute(text("ALTER TABLE courses ADD COLUMN updated_at DATETIME"))
-        if "is_active" not in course_columns:
-            conn.execute(text("ALTER TABLE courses ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+        if inspector.has_table("courses"):
+            course_columns = _columns(conn, "courses")
+            if "updated_at" not in course_columns:
+                conn.execute(text("ALTER TABLE courses ADD COLUMN updated_at DATETIME"))
+            if "is_active" not in course_columns:
+                conn.execute(text("ALTER TABLE courses ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+            if "department" not in course_columns:
+                conn.execute(text("ALTER TABLE courses ADD COLUMN department VARCHAR(100) DEFAULT 'General'"))
+            if "academic_year" not in course_columns:
+                conn.execute(text("ALTER TABLE courses ADD COLUMN academic_year VARCHAR(20) DEFAULT '2025-26'"))
+            if "semester" not in course_columns:
+                conn.execute(text("ALTER TABLE courses ADD COLUMN semester VARCHAR(10) DEFAULT '1'"))
+            if "credits" not in course_columns:
+                conn.execute(text("ALTER TABLE courses ADD COLUMN credits INTEGER DEFAULT 3"))
+            if "created_by_admin_id" not in course_columns:
+                conn.execute(text("ALTER TABLE courses ADD COLUMN created_by_admin_id INTEGER"))
 
         # Enrollment table updates
-        enrollment_columns = _columns(conn, "enrollments")
-        if "is_active" not in enrollment_columns:
-            conn.execute(text("ALTER TABLE enrollments ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+        if inspector.has_table("enrollments"):
+            enrollment_columns = _columns(conn, "enrollments")
+            if "is_active" not in enrollment_columns:
+                conn.execute(text("ALTER TABLE enrollments ADD COLUMN is_active BOOLEAN DEFAULT 1"))
+
+
 @app.after_request
 def add_header(response):
     """Add security headers and cache control to all responses."""
@@ -743,9 +932,9 @@ def register():
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
+        phone = request.form.get("phone", "").strip()
         department = request.form.get("department", "").strip()
         college_id = request.form.get("college_id", "").strip()
-        section = request.form.get("section", "").strip()
         year = request.form.get("year", "").strip()
         semester = request.form.get("semester", "").strip()
         password = request.form.get("password", "")
@@ -761,6 +950,11 @@ def register():
         # Validate email format (basic check)
         if not email or "@" not in email or "." not in email:
             flash("Please enter a valid email address.", "warning")
+            return redirect(url_for("register"))
+        
+        # Validate phone number
+        if not phone or not phone.isdigit() or len(phone) != 10:
+            flash("Please enter a valid 10-digit phone number.", "warning")
             return redirect(url_for("register"))
         
         # Validate department
@@ -788,27 +982,34 @@ def register():
             flash("Email already registered.", "danger")
             return redirect(url_for("register"))
         
-        # Validate student-specific fields
-        if role == "student" and not (college_id and section and year and semester):
-            flash("Students must provide College ID, Section, Year, and Semester.", "warning")
+        # Check for existing phone
+        if User.query.filter_by(phone=phone).first():
+            flash("Phone number already registered.", "danger")
+            return redirect(url_for("register"))
+        
+        # Validate student-specific fields (section NOT required during registration)
+        if role == "student" and not (college_id and year and semester):
+            flash("Students must provide College ID, Year, and Semester.", "warning")
             return redirect(url_for("register"))
 
-        # Create new user
+        # Create new user (section will be assigned by admin later)
         try:
             new_user = User(
                 name=name,
                 email=email,
+                phone=phone,
                 department=department,
                 college_id=college_id if role == "student" else None,
-                section=section if role == "student" else None,
+                section=None,  # Section assigned by admin, not during registration
                 year=year if role == "student" else None,
                 semester=semester if role == "student" else None,
+                assignment_status='pending',  # Pending section assignment
                 role=role,
                 password_hash=generate_password_hash(password, method="scrypt"),
             )
             db.session.add(new_user)
             db.session.commit()
-            app.logger.info("New user registered: email=%s, role=%s", email, role)
+            app.logger.info("New user registered: email=%s, phone=%s, role=%s", email, phone, role)
         except Exception as e:
             db.session.rollback()
             app.logger.error("Registration error: %s", str(e))
@@ -998,57 +1199,18 @@ def mark_attendance():
     return render_template("mark_attendance.html")
 
 
-@app.route("/teacher/courses/create", methods=["POST"])
-@login_required
-def create_course():
-    if current_user.role != "teacher":
-        flash("Only teachers can create courses.", "danger")
-        return redirect(url_for("dashboard"))
 
-    code = request.form.get("code", "").strip().upper()
-    title = request.form.get("title", "").strip()
-    section = request.form.get("section", "").strip().upper()
-
-    if not code or not title or not section:
-        flash("All course fields are required.", "warning")
-        return redirect(url_for("dashboard"))
-
-    exists = Course.query.filter_by(code=code, section=section, teacher_id=current_user.id).first()
-    if exists:
-        flash("Course already exists for this section.", "warning")
-        return redirect(url_for("dashboard"))
-
-    course = Course(code=code, title=title, section=section, teacher_id=current_user.id)
-    db.session.add(course)
-    db.session.commit()
-    flash("Course created successfully.", "success")
-    return redirect(url_for("dashboard"))
-
-
-@app.route("/teacher/courses/<int:course_id>/enroll", methods=["POST"])
-@login_required
-def enroll_student(course_id):
-    if current_user.role != "teacher":
-        flash("Only teachers can enroll students.", "danger")
-        return redirect(url_for("dashboard"))
-
-    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first_or_404()
-    student_email = request.form.get("student_email", "").strip().lower()
-    student = User.query.filter_by(email=student_email, role="student").first()
-
-    if not student:
-        flash("Student not found with this email.", "warning")
-        return redirect(url_for("dashboard"))
-
-    existing = Enrollment.query.filter_by(course_id=course.id, student_id=student.id).first()
-    if existing:
-        flash("Student already enrolled in this course.", "info")
-        return redirect(url_for("dashboard"))
-
-    db.session.add(Enrollment(course_id=course.id, student_id=student.id))
-    db.session.commit()
-    flash("Student enrolled successfully.", "success")
-    return redirect(url_for("dashboard"))
+# ══════════════════════════════════════════════════════════════════════════════
+# DEPRECATED TEACHER ROUTES (Removed - Admin handles these now)
+# ══════════════════════════════════════════════════════════════════════════════
+# The following routes have been removed as part of RBAC improvements:
+# - /teacher/courses/create (POST) - Only admins can create courses now
+# - /teacher/courses/<id>/enroll (POST) - Only admins can enroll students
+# - /teacher/courses/<id>/unenroll/<student_id> (POST) - Only admins can unenroll
+# - /teacher/courses/<id>/delete (POST) - Only admins can delete courses
+#
+# Teachers now work with ASSIGNED courses via TeacherAssignment table
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 @app.route("/teacher/sessions/create", methods=["POST"])
@@ -1059,6 +1221,7 @@ def create_session():
         return redirect(url_for("dashboard"))
 
     course_id_raw = request.form.get("course_id", "").strip()
+    section = request.form.get("section", "").strip().upper()
     room = request.form.get("room", "").strip()
     duration_raw = request.form.get("duration", "15").strip()
     teacher_lat_raw = request.form.get("teacher_lat", "").strip()
@@ -1070,9 +1233,14 @@ def create_session():
         flash("Invalid course selected.", "warning")
         return redirect(url_for("dashboard"))
 
-    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first()
+    # CHECK: Is teacher assigned to this course and section?
+    if not is_teacher_assigned_to_course(current_user.id, course_id, section):
+        flash("You are not assigned to teach this course section.", "danger")
+        return redirect(url_for("dashboard"))
+
+    course = Course.query.filter_by(id=course_id, is_active=True).first()
     if not course:
-        flash("Course not found for this teacher.", "warning")
+        flash("Course not found.", "warning")
         return redirect(url_for("dashboard"))
 
     if not room:
@@ -1102,6 +1270,7 @@ def create_session():
         course_code=course.code,
         room=room,
         course_id=course.id,
+        section=section,  # Store section with session
         starts_at=starts_at,
         ends_at=ends_at,
         teacher_id=current_user.id,
@@ -1134,6 +1303,153 @@ def close_session(session_id):
     return redirect(url_for("dashboard"))
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# TIMETABLE MANAGEMENT ROUTES
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/teacher/timetable")
+@login_required
+def teacher_timetable():
+    """View teacher's weekly timetable"""
+    if current_user.role != "teacher":
+        flash("Only teachers can access timetable.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    # Get teacher's timetable entries
+    from models import Timetable
+    timetable_entries = Timetable.query.filter_by(
+        teacher_id=current_user.id,
+        is_active=True
+    ).order_by(Timetable.day_of_week.asc(), Timetable.start_time.asc()).all()
+    
+    # Get assigned courses for dropdown
+    teacher_assignments = TeacherAssignment.query.filter_by(
+        teacher_id=current_user.id,
+        is_active=True
+    ).all()
+    
+    return render_template(
+        "teacher_timetable.html",
+        timetable_entries=timetable_entries,
+        teacher_assignments=teacher_assignments
+    )
+
+
+@app.route("/teacher/timetable/create", methods=["POST"])
+@login_required
+def teacher_create_timetable():
+    """Create a new timetable entry"""
+    if current_user.role != "teacher":
+        flash("Only teachers can create timetable entries.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    from models import Timetable
+    
+    course_id = request.form.get("course_id")
+    section = request.form.get("section", "").strip().upper()
+    day_of_week = request.form.get("day_of_week")
+    start_time_str = request.form.get("start_time")
+    end_time_str = request.form.get("end_time")
+    room = request.form.get("room", "").strip()
+    class_type = request.form.get("class_type", "Lecture").strip()
+    
+    # Validation
+    if not all([course_id, section, day_of_week, start_time_str, end_time_str, room]):
+        flash("All fields are required.", "warning")
+        return redirect(url_for("teacher_timetable"))
+    
+    try:
+        course_id = int(course_id)
+        day_of_week = int(day_of_week)
+    except ValueError:
+        flash("Invalid course or day selection.", "warning")
+        return redirect(url_for("teacher_timetable"))
+    
+    # Check if teacher is assigned to this course+section
+    if not is_teacher_assigned_to_course(current_user.id, course_id, section):
+        flash("You are not assigned to teach this course section.", "danger")
+        return redirect(url_for("teacher_timetable"))
+    
+    # Parse time
+    try:
+        from datetime import datetime
+        start_time = datetime.strptime(start_time_str, "%H:%M").time()
+        end_time = datetime.strptime(end_time_str, "%H:%M").time()
+    except ValueError:
+        flash("Invalid time format. Use HH:MM format.", "warning")
+        return redirect(url_for("teacher_timetable"))
+    
+    # Validate time range
+    if end_time <= start_time:
+        flash("End time must be after start time.", "warning")
+        return redirect(url_for("teacher_timetable"))
+    
+    # Check for conflicts
+    existing = Timetable.query.filter_by(
+        course_id=course_id,
+        section=section,
+        day_of_week=day_of_week,
+        start_time=start_time,
+        is_active=True
+    ).first()
+    
+    if existing:
+        flash("A timetable entry already exists for this slot.", "warning")
+        return redirect(url_for("teacher_timetable"))
+    
+    # Create timetable entry
+    try:
+        timetable_entry = Timetable(
+            course_id=course_id,
+            teacher_id=current_user.id,
+            section=section,
+            day_of_week=day_of_week,
+            start_time=start_time,
+            end_time=end_time,
+            room=room,
+            class_type=class_type
+        )
+        db.session.add(timetable_entry)
+        db.session.commit()
+        
+        course = Course.query.get(course_id)
+        flash(f"✅ Timetable entry created: {course.code} - Section {section} on {timetable_entry.get_day_name()} at {start_time_str}", "success")
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error creating timetable: {str(e)}")
+        flash("Failed to create timetable entry. Please try again.", "danger")
+    
+    return redirect(url_for("teacher_timetable"))
+
+
+@app.route("/teacher/timetable/<int:timetable_id>/delete", methods=["POST"])
+@login_required
+def teacher_delete_timetable(timetable_id):
+    """Delete a timetable entry"""
+    if current_user.role != "teacher":
+        flash("Only teachers can delete timetable entries.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    from models import Timetable
+    
+    timetable_entry = Timetable.query.filter_by(
+        id=timetable_id,
+        teacher_id=current_user.id
+    ).first_or_404()
+    
+    try:
+        timetable_entry.is_active = False
+        db.session.commit()
+        flash("Timetable entry deleted.", "info")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error deleting timetable: {str(e)}")
+        flash("Failed to delete timetable entry.", "danger")
+    
+    return redirect(url_for("teacher_timetable"))
+
+
 @app.route("/teacher/sessions/<int:session_id>/roster")
 @login_required
 def teacher_session_roster(session_id):
@@ -1150,6 +1466,60 @@ def teacher_session_roster(session_id):
         roster=roster,
         is_live=is_live,
     )
+
+
+@app.route("/teacher/sessions/<int:session_id>/lock_attendance", methods=["POST"])
+@login_required
+def teacher_lock_attendance(session_id):
+    """Lock attendance for a session to prevent further changes"""
+    if current_user.role != "teacher":
+        flash("Only teachers can lock attendance.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    session = ClassSession.query.filter_by(id=session_id, teacher_id=current_user.id).first_or_404()
+    
+    # Lock all attendance records for this session
+    attendance_records = SessionAttendance.query.filter_by(session_id=session_id).all()
+    
+    for record in attendance_records:
+        record.is_locked = True
+    
+    try:
+        db.session.commit()
+        flash(f"✅ Attendance locked for {session.course_code}. No further changes allowed.", "success")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error locking attendance: {str(e)}")
+        flash("Failed to lock attendance.", "danger")
+    
+    return redirect(url_for("teacher_session_roster", session_id=session_id))
+
+
+@app.route("/teacher/sessions/<int:session_id>/unlock_attendance", methods=["POST"])
+@login_required
+def teacher_unlock_attendance(session_id):
+    """Unlock attendance for a session to allow changes"""
+    if current_user.role != "teacher":
+        flash("Only teachers can unlock attendance.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    session = ClassSession.query.filter_by(id=session_id, teacher_id=current_user.id).first_or_404()
+    
+    # Unlock all attendance records for this session
+    attendance_records = SessionAttendance.query.filter_by(session_id=session_id).all()
+    
+    for record in attendance_records:
+        record.is_locked = False
+    
+    try:
+        db.session.commit()
+        flash(f"✅ Attendance unlocked for {session.course_code}. Changes are now allowed.", "info")
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error unlocking attendance: {str(e)}")
+        flash("Failed to unlock attendance.", "danger")
+    
+    return redirect(url_for("teacher_session_roster", session_id=session_id))
 
 
 @app.route("/api/active_sessions")
@@ -1238,6 +1608,18 @@ def mark_session_attendance():
         record_attempt(session.id, current_user.id, False, "Student not enrolled", lat, lng, None, device_hash, ip_address, user_agent)
         db.session.commit()
         return jsonify({"success": False, "message": "You are not enrolled for this course."}), 403
+    
+    # Check if student has section assigned
+    if not current_user.section:
+        record_attempt(session.id, current_user.id, False, "Section not assigned", lat, lng, None, device_hash, ip_address, user_agent)
+        db.session.commit()
+        return jsonify({"success": False, "message": "Your section is not assigned yet. Contact admin to assign your section."}), 403
+    
+    # Check if session has section and if student's section matches
+    if session.section and session.section != current_user.section:
+        record_attempt(session.id, current_user.id, False, f"Wrong section (student: {current_user.section}, session: {session.section})", lat, lng, None, device_hash, ip_address, user_agent)
+        db.session.commit()
+        return jsonify({"success": False, "message": f"This session is for Section {session.section}. You are in Section {current_user.section}."}), 403
 
     now = now_utc_naive()
     if not (session.is_active and session.starts_at <= now <= session.ends_at):
@@ -1340,6 +1722,12 @@ def mark_session_attendance():
         "✅ Face verified successfully: user_id=%s, session_id=%s, distance=%.4f",
         current_user.id, session.id, distance
     )
+    
+    # Check if marking is late (>10 min after session start)
+    now = now_utc_naive()
+    late_threshold = session.starts_at + timedelta(minutes=10)
+    is_late = now > late_threshold
+    
     entry = SessionAttendance(
         session_id=session.id,
         student_id=current_user.id,
@@ -1349,6 +1737,7 @@ def mark_session_attendance():
         device_hash=device_hash,
         ip_address=ip_address,
         user_agent=user_agent,
+        is_late=is_late,
     )
 
     db.session.add(entry)
@@ -1401,6 +1790,490 @@ def mark_session_attendance():
         "success": True,
         "message": f"Attendance marked for {session.course_code} ({session.title})."
     })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# STUDENT FEATURES - Phase 3
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/student/failed_attempts")
+@login_required
+def student_failed_attempts():
+    """Show student why their attendance attempts failed"""
+    if current_user.role != "student":
+        flash("Students only.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    # Get failed attempts for this student
+    failed_attempts = (
+        AttendanceAttempt.query.filter_by(
+            student_id=current_user.id,
+            success=False
+        )
+        .order_by(AttendanceAttempt.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    
+    # Group by session
+    attempts_by_session = {}
+    for attempt in failed_attempts:
+        if attempt.session_id not in attempts_by_session:
+            session = ClassSession.query.get(attempt.session_id) if attempt.session_id else None
+            attempts_by_session[attempt.session_id] = {
+                'session': session,
+                'attempts': []
+            }
+        attempts_by_session[attempt.session_id]['attempts'].append(attempt)
+    
+    return render_template(
+        "student_failed_attempts.html",
+        attempts_by_session=attempts_by_session,
+        total_failed=len(failed_attempts)
+    )
+
+
+@app.route("/api/student/attendance_alert")
+@login_required
+def student_attendance_alert():
+    """Check if student has low attendance and return alert data"""
+    if current_user.role != "student":
+        return jsonify({"alert": False})
+    
+    enrolled_courses = (
+        Course.query.join(Enrollment, Enrollment.course_id == Course.id)
+        .filter(Enrollment.student_id == current_user.id, Enrollment.is_active == True)
+        .all()
+    )
+    
+    low_courses = []
+    WARNING_THRESHOLD = 75.0
+    
+    for course in enrolled_courses:
+        # Get all sessions for this course
+        sessions = ClassSession.query.filter_by(course_id=course.id).all()
+        total = len(sessions)
+        
+        if total == 0:
+            continue
+        
+        # Get attended sessions
+        session_ids = [s.id for s in sessions]
+        attended = SessionAttendance.query.filter(
+            SessionAttendance.student_id == current_user.id,
+            SessionAttendance.session_id.in_(session_ids)
+        ).count()
+        
+        percentage = round((attended / total) * 100, 1)
+        
+        if percentage < WARNING_THRESHOLD:
+            low_courses.append({
+                "course_code": course.code,
+                "course_title": course.title,
+                "department": course.department,
+                "percentage": percentage,
+                "attended": attended,
+                "total": total,
+                "required": int((WARNING_THRESHOLD / 100) * total) - attended
+            })
+    
+    return jsonify({
+        "alert": len(low_courses) > 0,
+        "low_courses": low_courses,
+        "threshold": WARNING_THRESHOLD
+    })
+
+
+@app.route("/api/student/attendance_stats")
+@login_required
+def student_attendance_stats():
+    """Get detailed attendance statistics for student"""
+    if current_user.role != "student":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    # Overall stats
+    enrolled_courses = Enrollment.query.filter_by(
+        student_id=current_user.id,
+        is_active=True
+    ).all()
+    
+    total_courses = len(enrolled_courses)
+    
+    # Total sessions across all courses
+    course_ids = [e.course_id for e in enrolled_courses]
+    total_sessions = ClassSession.query.filter(
+        ClassSession.course_id.in_(course_ids),
+        ClassSession.starts_at <= now_utc_naive()
+    ).count() if course_ids else 0
+    
+    # Total attended
+    total_attended = SessionAttendance.query.filter_by(
+        student_id=current_user.id
+    ).count()
+    
+    # Overall percentage
+    overall_percentage = round((total_attended / total_sessions * 100), 1) if total_sessions > 0 else 0.0
+    
+    # Failed attempts count
+    failed_attempts = AttendanceAttempt.query.filter_by(
+        student_id=current_user.id,
+        success=False
+    ).count()
+    
+    # Recent attendance (last 7 days)
+    seven_days_ago = now_utc_naive() - timedelta(days=7)
+    recent_attended = SessionAttendance.query.filter(
+        SessionAttendance.student_id == current_user.id,
+        SessionAttendance.marked_at >= seven_days_ago
+    ).count()
+    
+    return jsonify({
+        "total_courses": total_courses,
+        "total_sessions": total_sessions,
+        "total_attended": total_attended,
+        "overall_percentage": overall_percentage,
+        "failed_attempts": failed_attempts,
+        "recent_attended": recent_attended,
+        "status": "good" if overall_percentage >= 75 else "warning" if overall_percentage >= 60 else "critical",
+        "courses": [
+            {
+                "course_code": e.course.code,
+                "course_title": e.course.title,
+                "attended_sessions": SessionAttendance.query.filter_by(
+                    student_id=current_user.id
+                ).join(ClassSession).filter(
+                    ClassSession.course_id == e.course_id
+                ).count(),
+                "total_sessions": ClassSession.query.filter_by(
+                    course_id=e.course_id
+                ).filter(
+                    ClassSession.starts_at <= now_utc_naive()
+                ).count(),
+                "percentage": round(
+                    (SessionAttendance.query.filter_by(
+                        student_id=current_user.id
+                    ).join(ClassSession).filter(
+                        ClassSession.course_id == e.course_id
+                    ).count() / 
+                    max(1, ClassSession.query.filter_by(
+                        course_id=e.course_id
+                    ).filter(
+                        ClassSession.starts_at <= now_utc_naive()
+                    ).count())) * 100, 2
+                ),
+                "status": "good" if (SessionAttendance.query.filter_by(
+                    student_id=current_user.id
+                ).join(ClassSession).filter(
+                    ClassSession.course_id == e.course_id
+                ).count() / 
+                max(1, ClassSession.query.filter_by(
+                    course_id=e.course_id
+                ).filter(
+                    ClassSession.starts_at <= now_utc_naive()
+                ).count())) * 100 >= 75 else "warning" if (SessionAttendance.query.filter_by(
+                    student_id=current_user.id
+                ).join(ClassSession).filter(
+                    ClassSession.course_id == e.course_id
+                ).count() / 
+                max(1, ClassSession.query.filter_by(
+                    course_id=e.course_id
+                ).filter(
+                    ClassSession.starts_at <= now_utc_naive()
+                ).count())) * 100 >= 60 else "critical"
+            }
+            for e in enrolled_courses
+        ]
+    })
+
+
+@app.route("/api/student/attendance_insights")
+@login_required
+def student_attendance_insights():
+    """Get smart attendance insights and predictions for student"""
+    if current_user.role != "student":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    # Get enrolled courses
+    enrollments = Enrollment.query.filter_by(
+        student_id=current_user.id,
+        is_active=True
+    ).all()
+    
+    insights = []
+    target_percentage = 75
+    
+    for enrollment in enrollments:
+        course = enrollment.course
+        
+        # Get total sessions for this course
+        total_sessions = ClassSession.query.filter_by(
+            course_id=course.id
+        ).filter(
+            ClassSession.starts_at <= now_utc_naive()
+        ).count()
+        
+        if total_sessions == 0:
+            continue
+        
+        # Get attended sessions
+        attended = SessionAttendance.query.filter_by(
+            student_id=current_user.id
+        ).join(ClassSession).filter(
+            ClassSession.course_id == course.id
+        ).count()
+        
+        current_percentage = (attended / total_sessions * 100) if total_sessions > 0 else 0
+        
+        # Calculate classes needed to reach target
+        if current_percentage >= target_percentage:
+            classes_needed = 0
+            message = f'Great! You are above {target_percentage}% attendance.'
+            status = 'good'
+        else:
+            # Formula: (attended + x) / (total + x) >= target/100
+            # Solving: x >= (target*total - 100*attended) / (100 - target)
+            classes_needed = max(0, int(
+                (target_percentage * total_sessions - 100 * attended) / 
+                (100 - target_percentage)
+            ) + 1)
+            message = f'Attend next {classes_needed} classes to reach {target_percentage}%'
+            
+            if current_percentage >= 65:
+                status = 'warning'
+            else:
+                status = 'critical'
+        
+        insights.append({
+            'course_code': course.code,
+            'course_title': course.title,
+            'current_percentage': round(current_percentage, 2),
+            'attended': attended,
+            'total': total_sessions,
+            'classes_needed': classes_needed,
+            'message': message,
+            'status': status
+        })
+    
+    # Calculate attendance streak
+    recent_attendance = SessionAttendance.query.filter_by(
+        student_id=current_user.id
+    ).join(ClassSession).order_by(
+        ClassSession.starts_at.desc()
+    ).limit(30).all()
+    
+    streak = 0
+    if recent_attendance:
+        last_date = None
+        for att in recent_attendance:
+            session_date = att.session.starts_at.date()
+            
+            if last_date is None:
+                streak = 1
+                last_date = session_date
+            elif (last_date - session_date).days == 1:
+                streak += 1
+                last_date = session_date
+            else:
+                break
+    
+    return jsonify({
+        'success': True,
+        'insights': insights,
+        'streak': streak,
+        'streak_message': f'🔥 {streak} day streak!' if streak > 0 else 'Start your streak today!'
+    })
+
+
+@app.route("/api/student/active_sessions")
+@login_required
+def api_student_active_sessions():
+    """Get active sessions for student with real-time data"""
+    if current_user.role != "student":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    now = now_utc_naive()
+    
+    # Get enrolled course IDs
+    course_ids = [e.course_id for e in Enrollment.query.filter_by(
+        student_id=current_user.id, is_active=True
+    ).all()]
+    
+    if not course_ids:
+        return jsonify({"success": True, "sessions": []})
+    
+    # Get active sessions
+    sessions = ClassSession.query.filter(
+        ClassSession.course_id.in_(course_ids),
+        ClassSession.is_active == True,
+        ClassSession.starts_at <= now,
+        ClassSession.ends_at >= now
+    ).order_by(ClassSession.ends_at.asc()).all()
+    
+    # Check which sessions student has already marked
+    marked_session_ids = {sa.session_id for sa in SessionAttendance.query.filter_by(
+        student_id=current_user.id
+    ).all()}
+    
+    session_data = []
+    for session in sessions:
+        session_data.append({
+            "id": session.id,
+            "course_code": session.course_code,
+            "title": session.title,
+            "room": session.room,
+            "section": session.section,
+            "already_marked": session.id in marked_session_ids,
+            "time_remaining_minutes": int((session.ends_at - now).total_seconds() / 60) if session.ends_at > now else 0
+        })
+    
+    return jsonify({
+        "success": True,
+        "sessions": session_data,
+        "count": len(session_data)
+    })
+
+
+@app.route("/api/teacher/dashboard_stats")
+@login_required
+def api_teacher_dashboard_stats():
+    """Get comprehensive dashboard statistics for teacher"""
+    if current_user.role != "teacher":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    # Get assigned courses
+    assignments = TeacherAssignment.query.filter_by(
+        teacher_id=current_user.id,
+        is_active=True
+    ).all()
+    
+    course_ids = list(set([a.course_id for a in assignments]))
+    
+    # Get unique students across all courses
+    if course_ids:
+        students = User.query.join(Enrollment).filter(
+            Enrollment.course_id.in_(course_ids),
+            Enrollment.is_active == True,
+            User.role == "student"
+        ).distinct().all()
+    else:
+        students = []
+    
+    # Get active sessions count
+    now = now_utc_naive()
+    active_sessions = ClassSession.query.filter(
+        ClassSession.teacher_id == current_user.id,
+        ClassSession.is_active == True,
+        ClassSession.starts_at <= now,
+        ClassSession.ends_at >= now
+    ).count()
+    
+    return jsonify({
+        "success": True,
+        "total_courses": len(course_ids),
+        "total_students": len(students),
+        "active_sessions": active_sessions,
+        "total_assignments": len(assignments)
+    })
+
+
+@app.route("/api/teacher/session/<int:session_id>/stats")
+@login_required
+def api_teacher_session_stats(session_id):
+    """Get real-time statistics for a session"""
+    if current_user.role != "teacher":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    session = ClassSession.query.filter_by(
+        id=session_id,
+        teacher_id=current_user.id
+    ).first()
+    
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    
+    # Get enrolled students count
+    enrolled_count = 0
+    if session.course_id:
+        query = Enrollment.query.filter_by(course_id=session.course_id, is_active=True)
+        if session.section:
+            query = query.join(User).filter(User.section == session.section)
+        enrolled_count = query.count()
+    
+    # Get attendance count
+    attendance_count = SessionAttendance.query.filter_by(session_id=session_id).count()
+    
+    # Get failed attempts count
+    failed_attempts = AttendanceAttempt.query.filter_by(
+        session_id=session_id,
+        success=False
+    ).count()
+    
+    # Calculate percentage
+    percentage = (attendance_count / enrolled_count * 100) if enrolled_count > 0 else 0
+    
+    return jsonify({
+        "success": True,
+        "session_id": session_id,
+        "enrolled": enrolled_count,
+        "marked": attendance_count,
+        "failed": failed_attempts,
+        "pending": enrolled_count - attendance_count,
+        "percentage": round(percentage, 2)
+    })
+
+
+@app.route("/api/admin/dashboard_stats")
+@login_required
+def api_admin_dashboard_stats():
+    """Get comprehensive dashboard statistics for admin"""
+    if current_user.role != "admin":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    # Total users by role
+    total_students = User.query.filter_by(role="student", is_active=True).count()
+    total_teachers = User.query.filter_by(role="teacher", is_active=True).count()
+    
+    # Pending section assignments
+    pending_assignments = User.query.filter_by(
+        role="student",
+        assignment_status="pending",
+        is_active=True
+    ).count()
+    
+    # Total courses
+    total_courses = Course.query.filter_by(is_active=True).count()
+    
+    # Active sessions right now
+    now = now_utc_naive()
+    active_sessions = ClassSession.query.filter(
+        ClassSession.is_active == True,
+        ClassSession.starts_at <= now,
+        ClassSession.ends_at >= now
+    ).count()
+    
+    # Today's attendance count
+    local_now = datetime.now(ZoneInfo(app.config["APP_TIMEZONE"]))
+    today_date = local_now.date()
+    today_attendance = Attendance.query.filter_by(date=today_date).count()
+    
+    # Low attendance count (simplified for performance)
+    low_attendance_count = 0
+    
+    return jsonify({
+        "success": True,
+        "total_students": total_students,
+        "total_teachers": total_teachers,
+        "pending_assignments": pending_assignments,
+        "total_courses": total_courses,
+        "active_sessions": active_sessions,
+        "today_attendance": today_attendance,
+        "low_attendance_count": low_attendance_count
+    })
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# END STUDENT FEATURES
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 # ── Student: Reset/Re-enroll Face ─────────────────────────────────────────────
@@ -1489,7 +2362,12 @@ def course_attendance_report(course_id):
         flash("Only teachers can view course reports.", "danger")
         return redirect(url_for("dashboard"))
 
-    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first_or_404()
+    course = Course.query.get_or_404(course_id)
+    
+    # CHECK: Is teacher assigned to this course?
+    if not is_teacher_assigned_to_course(current_user.id, course_id):
+        flash("You are not assigned to teach this course.", "danger")
+        return redirect(url_for("dashboard"))
 
     # All sessions ever held for this course
     all_sessions = ClassSession.query.filter_by(course_id=course.id).all()
@@ -1526,43 +2404,549 @@ def course_attendance_report(course_id):
         course=course,
         report=report,
         total_sessions=total_sessions,
-        teacher_courses=Course.query.filter_by(teacher_id=current_user.id).all(),
+        teacher_courses=get_teacher_assigned_courses(current_user.id),
     )
 # ──────────────────────────────────────────────────────────────────────────────
 
 
-# ── Teacher: Unenroll a Student from a Course ─────────────────────────────────
-@app.route("/teacher/courses/<int:course_id>/unenroll/<int:student_id>", methods=["POST"])
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN ROUTES - Course & Enrollment Management
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/admin/courses/create", methods=["POST"])
 @login_required
-def unenroll_student(course_id, student_id):
-    if current_user.role != "teacher":
-        flash("Only teachers can unenroll students.", "danger")
+def admin_create_course():
+    """Admin creates a new course"""
+    if current_user.role != "admin":
+        flash("Only admins can create courses.", "danger")
         return redirect(url_for("dashboard"))
-    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first_or_404()
-    enrollment = Enrollment.query.filter_by(course_id=course.id, student_id=student_id).first()
-    if enrollment:
-        db.session.delete(enrollment)
+    
+    code = request.form.get("code", "").strip().upper()
+    title = request.form.get("title", "").strip()
+    department = request.form.get("department", "").strip()
+    academic_year = request.form.get("academic_year", "").strip()
+    semester = request.form.get("semester", "").strip()
+    credits = request.form.get("credits", "3").strip()
+    
+    if not all([code, title, department, academic_year, semester]):
+        flash("All fields are required.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    try:
+        credits = int(credits)
+    except ValueError:
+        credits = 3
+    
+    # Check if course already exists
+    existing = Course.query.filter_by(
+        code=code,
+        department=department,
+        academic_year=academic_year,
+        semester=semester
+    ).first()
+    
+    if existing:
+        flash(f"Course {code} already exists for {department} ({academic_year} Sem {semester}).", "warning")
+        return redirect(url_for("dashboard"))
+    
+    course = Course(
+        code=code,
+        title=title,
+        department=department,
+        academic_year=academic_year,
+        semester=semester,
+        credits=credits,
+        created_by_admin_id=current_user.id
+    )
+    db.session.add(course)
+    db.session.commit()
+    
+    flash(f"Course '{code} - {title}' created successfully.", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/courses/<int:course_id>/delete", methods=["POST"])
+@login_required
+def admin_delete_course(course_id):
+    """Admin deletes a course"""
+    if current_user.role != "admin":
+        flash("Only admins can delete courses.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    course = Course.query.get_or_404(course_id)
+    
+    # Check if course has active sessions
+    active_sessions = ClassSession.query.filter_by(course_id=course.id, is_active=True).count()
+    if active_sessions > 0:
+        flash(f"Cannot delete course with {active_sessions} active session(s). Close them first.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    course_name = f"{course.code} - {course.title}"
+    db.session.delete(course)
+    db.session.commit()
+    
+    flash(f"Course '{course_name}' deleted successfully.", "info")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/teachers/assign", methods=["POST"])
+@login_required
+def admin_assign_teacher():
+    """Admin assigns a teacher to a course section"""
+    if current_user.role != "admin":
+        flash("Only admins can assign teachers.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    teacher_id = request.form.get("teacher_id")
+    course_id = request.form.get("course_id")
+    section = request.form.get("section", "").strip().upper()
+    
+    if not all([teacher_id, course_id, section]):
+        flash("Teacher, course, and section are required.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    teacher = User.query.filter_by(id=teacher_id, role="teacher").first()
+    if not teacher:
+        flash("Teacher not found.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    course = Course.query.get(course_id)
+    if not course:
+        flash("Course not found.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    # Check if already assigned
+    existing = TeacherAssignment.query.filter_by(
+        teacher_id=teacher_id,
+        course_id=course_id,
+        section=section
+    ).first()
+    
+    if existing:
+        if existing.is_active:
+            flash(f"{teacher.name} is already assigned to {course.code} Section {section}.", "info")
+        else:
+            # Reactivate
+            existing.is_active = True
+            db.session.commit()
+            flash(f"{teacher.name} re-assigned to {course.code} Section {section}.", "success")
+        return redirect(url_for("dashboard"))
+    
+    assignment = TeacherAssignment(
+        teacher_id=teacher_id,
+        course_id=course_id,
+        section=section,
+        assigned_by_admin_id=current_user.id
+    )
+    db.session.add(assignment)
+    db.session.commit()
+    
+    flash(f"{teacher.name} assigned to {course.code} Section {section}.", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/teachers/<int:assignment_id>/unassign", methods=["POST"])
+@login_required
+def admin_unassign_teacher(assignment_id):
+    """Admin removes a teacher assignment"""
+    if current_user.role != "admin":
+        flash("Only admins can unassign teachers.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    assignment = TeacherAssignment.query.get_or_404(assignment_id)
+    teacher = User.query.get(assignment.teacher_id)
+    course = Course.query.get(assignment.course_id)
+    
+    assignment.is_active = False
+    db.session.commit()
+    
+    flash(f"{teacher.name} unassigned from {course.code} Section {assignment.section}.", "info")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/students/bulk_enroll", methods=["POST"])
+@login_required
+@limiter.limit("10 per hour")
+def admin_bulk_enroll():
+    """
+    Admin bulk enrolls students via CSV upload
+    
+    CSV Format:
+    college_id,name,email,department,section,year,semester,course_code
+    2021001,Rahul Kumar,rahul@example.com,CSE,A,3,5,CS301
+    """
+    if current_user.role != "admin":
+        flash("Only admins can bulk enroll students.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    if 'file' not in request.files:
+        flash("No file uploaded.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    file = request.files['file']
+    if file.filename == '':
+        flash("No file selected.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    if not file.filename.endswith('.csv'):
+        flash("Only CSV files are allowed.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    # Process CSV
+    import csv
+    import io
+    
+    try:
+        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        csv_reader = csv.DictReader(stream)
+        
+        successful = 0
+        failed = 0
+        errors = []
+        total_rows = 0
+        
+        for row in csv_reader:
+            total_rows += 1
+            try:
+                # Validate required fields
+                required_fields = ['college_id', 'name', 'email', 'department', 'section', 'year', 'semester', 'course_code']
+                missing = [f for f in required_fields if f not in row or not row[f].strip()]
+                if missing:
+                    errors.append(f"Row {total_rows}: Missing fields: {', '.join(missing)}")
+                    failed += 1
+                    continue
+                
+                email = row['email'].strip().lower()
+                college_id = row['college_id'].strip()
+                
+                # Check if student exists
+                student = User.query.filter_by(email=email).first()
+                
+                if not student:
+                    # Create new student with default password = college_id
+                    student = User(
+                        name=row['name'].strip(),
+                        email=email,
+                        college_id=college_id,
+                        section=row['section'].strip().upper(),
+                        year=row['year'].strip(),
+                        semester=row['semester'].strip(),
+                        department=row['department'].strip(),
+                        role='student',
+                        password_hash=generate_password_hash(college_id, method="scrypt")
+                    )
+                    db.session.add(student)
+                    db.session.flush()  # Get student.id
+                
+                # Find course
+                course_code = row['course_code'].strip().upper()
+                course = Course.query.filter_by(code=course_code, is_active=True).first()
+                
+                if not course:
+                    errors.append(f"Row {total_rows}: Course '{course_code}' not found")
+                    failed += 1
+                    continue
+                
+                # Check if already enrolled
+                existing = Enrollment.query.filter_by(
+                    course_id=course.id,
+                    student_id=student.id
+                ).first()
+                
+                if not existing:
+                    enrollment = Enrollment(
+                        course_id=course.id,
+                        student_id=student.id
+                    )
+                    db.session.add(enrollment)
+                
+                successful += 1
+                
+            except Exception as e:
+                failed += 1
+                errors.append(f"Row {total_rows}: {str(e)}")
+                app.logger.error(f"Bulk enrollment error on row {total_rows}: {str(e)}")
+                continue
+        
+        # Save bulk enrollment record
+        bulk_record = BulkEnrollment(
+            uploaded_by_admin_id=current_user.id,
+            filename=file.filename,
+            total_rows=total_rows,
+            successful=successful,
+            failed=failed,
+            error_log=json.dumps(errors[:50])  # Store first 50 errors
+        )
+        db.session.add(bulk_record)
         db.session.commit()
-        flash("Student unenrolled successfully.", "info")
-    else:
-        flash("Enrollment not found.", "warning")
-    return redirect(url_for("course_attendance_report", course_id=course.id))
+        
+        if failed == 0:
+            flash(f"✅ Bulk enrollment complete: {successful} students enrolled successfully!", "success")
+        else:
+            flash(f"⚠️ Bulk enrollment complete: {successful} successful, {failed} failed.", "warning")
+            for error in errors[:5]:  # Show first 5 errors
+                flash(error, "danger")
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Bulk enrollment failed")
+        flash(f"Bulk enrollment failed: {str(e)}", "danger")
+    
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/students/bulk_assign_sections", methods=["POST"])
+@login_required
+@limiter.limit("10 per hour")
+def admin_bulk_assign_sections():
+    """
+    Admin bulk assigns sections to students via CSV upload
+    
+    CSV Format:
+    email,section,year,semester
+    rahul@example.com,A,2,3
+    priya@example.com,A,2,3
+    """
+    if current_user.role != "admin":
+        flash("Only admins can bulk assign sections.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    if 'file' not in request.files:
+        flash("No file uploaded.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    file = request.files['file']
+    if file.filename == '':
+        flash("No file selected.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    if not file.filename.endswith('.csv'):
+        flash("Only CSV files are allowed.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    # Process CSV
+    try:
+        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        csv_reader = csv.DictReader(stream)
+        
+        successful = 0
+        failed = 0
+        errors = []
+        total_rows = 0
+        
+        for row in csv_reader:
+            total_rows += 1
+            try:
+                # Validate required fields
+                required_fields = ['email', 'section']
+                missing = [f for f in required_fields if f not in row or not row[f].strip()]
+                if missing:
+                    errors.append(f"Row {total_rows}: Missing fields: {', '.join(missing)}")
+                    failed += 1
+                    continue
+                
+                email = row['email'].strip().lower()
+                section = row['section'].strip().upper()
+                year = row.get('year', '').strip()
+                semester = row.get('semester', '').strip()
+                
+                # Find student
+                student = User.query.filter_by(email=email, role='student').first()
+                
+                if not student:
+                    errors.append(f"Row {total_rows}: Student with email '{email}' not found")
+                    failed += 1
+                    continue
+                
+                # Update section
+                student.section = section
+                if year:
+                    student.year = year
+                if semester:
+                    student.semester = semester
+                
+                # Update assignment status
+                if student.assignment_status == 'pending':
+                    student.assignment_status = 'assigned'
+                
+                successful += 1
+                
+            except Exception as e:
+                failed += 1
+                errors.append(f"Row {total_rows}: {str(e)}")
+                app.logger.error(f"Bulk section assignment error on row {total_rows}: {str(e)}")
+                continue
+        
+        db.session.commit()
+        
+        if failed == 0:
+            flash(f"✅ Bulk section assignment complete: {successful} students assigned successfully!", "success")
+        else:
+            flash(f"⚠️ Bulk section assignment complete: {successful} successful, {failed} failed.", "warning")
+            for error in errors[:5]:  # Show first 5 errors
+                flash(error, "danger")
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Bulk section assignment failed")
+        flash(f"Bulk section assignment failed: {str(e)}", "danger")
+    
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/students/enroll", methods=["POST"])
+@login_required
+def admin_enroll_student():
+    """Admin manually enrolls a student in a course section"""
+    if current_user.role != "admin":
+        flash("Only admins can enroll students.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    student_id = request.form.get("student_id")
+    course_id = request.form.get("course_id")
+    section = request.form.get("section", "").strip().upper()
+    
+    if not all([student_id, course_id, section]):
+        flash("Student, course, and section are required.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    student = User.query.filter_by(id=student_id, role='student').first()
+    if not student:
+        flash("Student not found.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    course = Course.query.get(course_id)
+    if not course:
+        flash("Course not found.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    # Check if teacher is assigned to this course section
+    teacher_assigned = TeacherAssignment.query.filter_by(
+        course_id=course_id,
+        section=section,
+        is_active=True
+    ).first()
+    
+    if not teacher_assigned:
+        flash(f"⚠️ Warning: No teacher assigned to {course.code} Section {section} yet.", "warning")
+    
+    # Check if student's section matches enrollment section
+    if student.section and student.section != section:
+        flash(f"⚠️ Warning: Student is in Section {student.section} but enrolling in Section {section}. Consider updating student's section first.", "warning")
+    
+    # Check if already enrolled
+    existing = Enrollment.query.filter_by(
+        student_id=student_id,
+        course_id=course_id
+    ).first()
+    
+    if existing:
+        if existing.is_active:
+            flash(f"{student.name} is already enrolled in {course.code}.", "info")
+        else:
+            # Reactivate enrollment
+            existing.is_active = True
+            db.session.commit()
+            flash(f"{student.name} re-enrolled in {course.code} Section {section}.", "success")
+        return redirect(url_for("dashboard"))
+    
+    try:
+        enrollment = Enrollment(
+            student_id=student_id,
+            course_id=course_id
+        )
+        db.session.add(enrollment)
+        db.session.commit()
+        
+        flash(f"✅ {student.name} enrolled in {course.code} Section {section} successfully!", "success")
+        
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error enrolling student: {str(e)}")
+        flash("Failed to enroll student. Please try again.", "danger")
+    
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/students/<int:student_id>/change_section", methods=["POST"])
+@login_required
+def admin_change_student_section(student_id):
+    """Admin changes a student's section"""
+    if current_user.role != "admin":
+        flash("Only admins can change student sections.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    student = User.query.filter_by(id=student_id, role='student').first_or_404()
+    
+    new_section = request.form.get("section", "").strip().upper()
+    new_year = request.form.get("year", "").strip()
+    new_semester = request.form.get("semester", "").strip()
+    
+    if not new_section:
+        flash("Section is required.", "warning")
+        return redirect(url_for("dashboard"))
+    
+    old_section = student.section
+    old_year = student.year
+    old_semester = student.semester
+    
+    student.section = new_section
+    if new_year:
+        student.year = new_year
+    if new_semester:
+        student.semester = new_semester
+    
+    # Update assignment status to 'assigned' when section is set
+    if new_section and student.assignment_status == 'pending':
+        student.assignment_status = 'assigned'
+    
+    try:
+        db.session.commit()
+        
+        if old_section:
+            flash(f"✅ {student.name}'s section changed from {old_section} to {new_section}.", "success")
+        else:
+            flash(f"✅ {student.name} assigned to Section {new_section}.", "success")
+            
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error changing section: {str(e)}")
+        flash("Failed to change section. Please try again.", "danger")
+    
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/enrollments/<int:enrollment_id>/delete", methods=["POST"])
+@login_required
+def admin_delete_enrollment(enrollment_id):
+    """Admin removes a student enrollment"""
+    if current_user.role != "admin":
+        flash("Only admins can delete enrollments.", "danger")
+        return redirect(url_for("dashboard"))
+    
+    enrollment = Enrollment.query.get_or_404(enrollment_id)
+    student = User.query.get(enrollment.student_id)
+    course = Course.query.get(enrollment.course_id)
+    
+    db.session.delete(enrollment)
+    db.session.commit()
+    
+    flash(f"{student.name} unenrolled from {course.code}.", "info")
+    return redirect(url_for("dashboard"))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# END ADMIN ROUTES
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+# ── Teacher: Unenroll a Student from a Course ─────────────────────────────────
+# DEPRECATED: Moved to admin_delete_enrollment
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 # ── Teacher: Delete a Course ──────────────────────────────────────────────────
-@app.route("/teacher/courses/<int:course_id>/delete", methods=["POST"])
-@login_required
-def delete_course(course_id):
-    if current_user.role != "teacher":
-        flash("Only teachers can delete courses.", "danger")
-        return redirect(url_for("dashboard"))
-    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first_or_404()
-    # Cascade deletes enrollments (defined in model), sessions cascade their attendance
-    db.session.delete(course)
-    db.session.commit()
-    flash(f"Course '{course.code} – {course.title}' deleted.", "info")
-    return redirect(url_for("dashboard"))
+# DEPRECATED: Moved to admin_delete_course
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -1733,6 +3117,128 @@ def admin_clear_face(user_id):
 
 # ── Admin: Secret Credentials View (2-step check) ────────────────────────────
 # ──────────────────────────────────────────────────────────────────────────────
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ADMIN API ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route("/api/admin/courses")
+@login_required
+def api_admin_courses():
+    """Get all courses for admin dropdowns"""
+    if current_user.role != "admin":
+        return jsonify({"courses": []}), 403
+    
+    courses = Course.query.filter_by(is_active=True).order_by(Course.code.asc()).all()
+    
+    return jsonify({
+        "courses": [
+            {
+                "id": c.id,
+                "code": c.code,
+                "title": c.title,
+                "department": c.department,
+                "academic_year": c.academic_year,
+                "semester": c.semester,
+                "credits": c.credits
+            }
+            for c in courses
+        ]
+    })
+
+
+@app.route("/api/admin/teacher_assignments")
+@login_required
+def api_admin_teacher_assignments():
+    """Get all teacher assignments for admin view"""
+    if current_user.role != "admin":
+        return jsonify({"assignments": []}), 403
+    
+    assignments = (
+        db.session.query(TeacherAssignment, User, Course)
+        .join(User, User.id == TeacherAssignment.teacher_id)
+        .join(Course, Course.id == TeacherAssignment.course_id)
+        .filter(TeacherAssignment.is_active == True)
+        .order_by(Course.code.asc(), TeacherAssignment.section.asc())
+        .all()
+    )
+    
+    return jsonify({
+        "assignments": [
+            {
+                "id": a.id,
+                "teacher_name": t.name,
+                "teacher_email": t.email,
+                "course_code": c.code,
+                "course_title": c.title,
+                "section": a.section,
+                "department": c.department
+            }
+            for a, t, c in assignments
+        ]
+    })
+
+
+@app.route("/api/admin/course_sections/<int:course_id>")
+@login_required
+def api_admin_course_sections(course_id):
+    """Get available sections for a course (sections with teacher assignments)"""
+    if current_user.role != "admin":
+        return jsonify({"sections": []}), 403
+    
+    course = Course.query.get(course_id)
+    if not course:
+        return jsonify({"sections": [], "error": "Course not found"}), 404
+    
+    # Get all sections that have teacher assignments for this course
+    assignments = TeacherAssignment.query.filter_by(
+        course_id=course_id,
+        is_active=True
+    ).order_by(TeacherAssignment.section.asc()).all()
+    
+    sections = []
+    for assignment in assignments:
+        teacher = User.query.get(assignment.teacher_id)
+        sections.append({
+            "section": assignment.section,
+            "teacher_name": teacher.name if teacher else "Unknown",
+            "teacher_id": assignment.teacher_id
+        })
+    
+    return jsonify({
+        "course_code": course.code,
+        "course_title": course.title,
+        "sections": sections
+    })
+
+
+@app.route("/api/admin/generate_sessions", methods=["POST"])
+@login_required
+def api_admin_generate_sessions():
+    """Manually trigger auto-session generation (for testing/admin control)"""
+    if current_user.role != "admin":
+        return jsonify({"success": False, "message": "Admin access required"}), 403
+    
+    try:
+        result = generate_sessions_from_timetable()
+        return jsonify({
+            "success": True,
+            "sessions_created": result["sessions_created"],
+            "sessions_closed": result["sessions_closed"],
+            "message": f"Generated {result['sessions_created']} sessions, closed {result['sessions_closed']} expired sessions"
+        })
+    except Exception as e:
+        app.logger.error(f"Manual session generation failed: {str(e)}")
+        return jsonify({
+            "success": False,
+            "message": f"Session generation failed: {str(e)}"
+        }), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# END ADMIN API ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
 
 
 # ── API: Live session attendance counts (for teacher polling) ─────────────────
@@ -1970,12 +3476,42 @@ def dashboard():
                 else:
                     user_attendance_map[user.id][date.isoformat()] = None
 
+        # Get teachers and courses for admin forms
+        teachers = User.query.filter_by(role='teacher', is_active=True).order_by(User.name.asc()).all()
+        courses = Course.query.filter_by(is_active=True).order_by(Course.code.asc()).all()
+        teacher_assignments = TeacherAssignment.query.filter_by(is_active=True).all()
+        
+        # Registration Statistics
+        total_students = User.query.filter_by(role='student', is_active=True).count()
+        pending_students = User.query.filter_by(role='student', assignment_status='pending', is_active=True).count()
+        assigned_students = User.query.filter_by(role='student', assignment_status='assigned', is_active=True).count()
+        
+        # Department-wise statistics
+        dept_stats = {}
+        departments = db.session.query(User.department).filter_by(role='student', is_active=True).distinct().all()
+        for (dept,) in departments:
+            total = User.query.filter_by(role='student', department=dept, is_active=True).count()
+            pending = User.query.filter_by(role='student', department=dept, assignment_status='pending', is_active=True).count()
+            assigned = User.query.filter_by(role='student', department=dept, assignment_status='assigned', is_active=True).count()
+            dept_stats[dept] = {
+                'total': total,
+                'pending': pending,
+                'assigned': assigned
+            }
+
         return render_template(
             "admin_dashboard.html",
             users=users,
             recent_dates=recent_dates,
             user_attendance_map=user_attendance_map,
             today_count=today_count,
+            teachers=teachers,
+            courses=courses,
+            teacher_assignments=teacher_assignments,
+            total_students=total_students,
+            pending_students=pending_students,
+            assigned_students=assigned_students,
+            dept_stats=dept_stats,
         )
 
     if current_user.role == "teacher":
@@ -1983,7 +3519,31 @@ def dashboard():
         recent_dates = [today - timedelta(days=i) for i in range(7)]
         recent_dates.reverse()
 
-        students = teacher_students_query(current_user.id).order_by(User.name.asc()).all()
+        # Get ASSIGNED courses only (via TeacherAssignment table)
+        teacher_courses = get_teacher_assigned_courses(current_user.id)
+        
+        # Get teacher assignments with section info
+        teacher_assignments = TeacherAssignment.query.filter_by(
+            teacher_id=current_user.id,
+            is_active=True
+        ).all()
+
+        # Get students from assigned courses
+        assigned_course_ids = [c.id for c in teacher_courses]
+        if assigned_course_ids:
+            students = (
+                User.query.join(Enrollment, Enrollment.student_id == User.id)
+                .filter(
+                    Enrollment.course_id.in_(assigned_course_ids),
+                    User.role == "student"
+                )
+                .distinct()
+                .order_by(User.name.asc())
+                .all()
+            )
+        else:
+            students = []
+        
         student_attendance_map = {}
         student_today_count = 0
 
@@ -1999,7 +3559,6 @@ def dashboard():
                     student_attendance_map[student.id][date.isoformat()] = None
 
         now = now_utc_naive()
-        teacher_courses = Course.query.filter_by(teacher_id=current_user.id).order_by(Course.created_at.desc()).all()
         teacher_sessions = (
             ClassSession.query.filter_by(teacher_id=current_user.id)
             .order_by(ClassSession.created_at.desc())
@@ -2035,6 +3594,7 @@ def dashboard():
             student_attendance_map=student_attendance_map,
             student_today_count=student_today_count,
             teacher_courses=teacher_courses,
+            teacher_assignments=teacher_assignments,
             course_enrollment_count_map=course_enrollment_count_map,
             teacher_sessions=teacher_sessions,
             active_session_count=active_session_count,

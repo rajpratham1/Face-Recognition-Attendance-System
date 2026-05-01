@@ -1,0 +1,11 @@
+college_id,name,email,department,section,year,semester,course_code
+2021001,Rahul Kumar,rahul.kumar@example.com,CSE,A,3,5,CS301
+2021002,Priya Sharma,priya.sharma@example.com,CSE,A,3,5,CS301
+2021003,Amit Singh,amit.singh@example.com,CSE,B,3,5,CS301
+2021004,Neha Gupta,neha.gupta@example.com,ECE,A,2,3,EC201
+2021005,Vikram Patel,vikram.patel@example.com,ECE,A,2,3,EC201
+2021006,Anjali Reddy,anjali.reddy@example.com,CSE,A,3,5,CS302
+2021007,Rohan Mehta,rohan.mehta@example.com,CSE,B,3,5,CS302
+2021008,Sneha Iyer,sneha.iyer@example.com,ECE,B,2,3,EC202
+2021009,Karan Joshi,karan.joshi@example.com,CSE,A,3,5,CS301
+2021010,Pooja Nair,pooja.nair@example.com,ECE,A,2,3,EC201

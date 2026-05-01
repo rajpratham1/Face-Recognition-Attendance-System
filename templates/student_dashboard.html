@@ -1,6 +1,14 @@
 {% extends "base.html" %}
 
 {% block content %}
+{# Low Attendance Alert Banner #}
+<div id="low-attendance-alert" class="alert alert-warning alert-dismissible fade show mb-3" style="display: none;">
+    <strong>⚠️ Low Attendance Warning!</strong>
+    <p class="mb-2 small" id="alert-message"></p>
+    <div id="alert-courses"></div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+
 <div class="dashboard-shell reveal-up mb-4">
     <div class="dashboard-hero">
         <span class="hero-kicker">Student Workspace</span>
@@ -8,11 +16,14 @@
         <p class="mb-2" style="opacity:.9;">Track live classes and monitor your attendance progress in real time.</p>
         <div class="hero-stat-pills">
             <span class="hero-stat-pill">Live Sessions: {{ active_sessions|length }}</span>
-            <span class="hero-stat-pill">Attendance: {{ attendance_percentage }}%</span>
+            <span class="hero-stat-pill" id="attendance-pill">Attendance: {{ attendance_percentage }}%</span>
             <span class="hero-stat-pill">Records: {{ session_records|length }}</span>
         </div>
         <div class="d-flex flex-wrap gap-2 mt-3">
             <a href="{{ url_for('mark_attendance') }}" class="btn btn-light btn-sm">Mark Attendance</a>
+            <a href="{{ url_for('student_failed_attempts') }}" class="btn btn-outline-light btn-sm">
+                ❌ Failed Attempts
+            </a>
             <a href="#daily-records" class="btn btn-outline-light btn-sm">My Records</a>
         </div>
     </div>
@@ -23,7 +34,39 @@
         <div class="glass-card text-center h-100">
             <div class="avatar-pill mb-3">{{ current_user.name[0] }}</div>
             <h4 class="mb-1">{{ current_user.name }}</h4>
-            <p class="text-muted mb-3">Student Panel  -  {{ current_user.department }}</p>
+            <p class="text-muted mb-1">{{ current_user.department }}</p>
+            {% if current_user.section %}
+            <p class="small mb-3">
+                <span class="badge bg-primary">Section {{ current_user.section }}</span>
+                <span class="badge bg-info text-dark">Year {{ current_user.year or '?' }}</span>
+                <span class="badge bg-secondary">Sem {{ current_user.semester or '?' }}</span>
+            </p>
+            {% else %}
+            <p class="small text-warning mb-3">
+                ⚠️ Section not assigned yet. Contact admin.
+            </p>
+            {% endif %}
+            
+            {# Quick Stats #}
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body p-2">
+                            <div class="small text-muted">Courses</div>
+                            <div class="h5 mb-0" id="stat-courses">-</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body p-2">
+                            <div class="small text-muted">Sessions</div>
+                            <div class="h5 mb-0" id="stat-sessions">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom w-100 mb-2">Open Session Attendance</a>
             <div class="panel-metric mt-2"><span>Live Sessions</span><strong>{{ active_sessions|length }}</strong></div>
             <hr class="my-3">
@@ -158,5 +201,53 @@
       bar.style.width = pct + '%';
       bar.style.transition = 'width 0.6s ease';
   });
+  
+  // ── Load Attendance Stats ──────────────────────────────────────────────
+  fetch('/api/student/attendance_stats')
+      .then(response => response.json())
+      .then(data => {
+          if (data.total_courses !== undefined) {
+              document.getElementById('stat-courses').textContent = data.total_courses;
+              document.getElementById('stat-sessions').textContent = data.total_sessions;
+              
+              // Update attendance pill color based on status
+              const pill = document.getElementById('attendance-pill');
+              if (pill) {
+                  pill.textContent = `Attendance: ${data.overall_percentage}%`;
+                  if (data.status === 'critical') {
+                      pill.style.backgroundColor = '#dc3545';
+                      pill.style.color = 'white';
+                  } else if (data.status === 'warning') {
+                      pill.style.backgroundColor = '#ffc107';
+                      pill.style.color = 'black';
+                  }
+              }
+          }
+      })
+      .catch(error => console.error('Error loading stats:', error));
+  
+  // ── Check for Low Attendance Alert ─────────────────────────────────────
+  fetch('/api/student/attendance_alert')
+      .then(response => response.json())
+      .then(data => {
+          if (data.alert && data.low_courses && data.low_courses.length > 0) {
+              const alertDiv = document.getElementById('low-attendance-alert');
+              const messageDiv = document.getElementById('alert-message');
+              const coursesDiv = document.getElementById('alert-courses');
+              
+              messageDiv.textContent = `You have low attendance (below ${data.threshold}%) in ${data.low_courses.length} course(s). Attend more classes to avoid academic issues.`;
+              
+              let coursesHTML = '<ul class="mb-0 small">';
+              data.low_courses.forEach(course => {
+                  coursesHTML += `<li><strong>${course.course_code}</strong>: ${course.percentage}% (${course.attended}/${course.total} sessions) - Need ${course.required} more</li>`;
+              });
+              coursesHTML += '</ul>';
+              
+              coursesDiv.innerHTML = coursesHTML;
+              alertDiv.style.display = 'block';
+          }
+      })
+      .catch(error => console.error('Error checking attendance alert:', error));
 </script>
 {% endblock %}
+

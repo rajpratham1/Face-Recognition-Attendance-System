@@ -14,7 +14,10 @@
             <h2 class="mb-1">Admin Attendance Console</h2>
             <p class="mb-0" style="opacity:.9;">{{ app_program_name }} - Full Platform View</p>
         </div>
-        <button id="admin-print-btn" class="btn btn-hero-action">🖨 Print Report</button>
+        <div class="d-flex gap-2">
+            <button id="admin-print-btn" class="btn btn-hero-action">🖨 Print Report</button>
+            <button id="generate-sessions-btn" class="btn btn-success btn-sm">🔄 Generate Sessions</button>
+        </div>
     </div>
 </div>
 
@@ -22,29 +25,81 @@
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
         <div class="metric-tile metric-blue text-center">
-            <div class="metric-label">Total Users</div>
-            <div class="metric-value">{{ non_admin_users|length }}</div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="metric-tile metric-green text-center">
-            <div class="metric-label">Today's Attendance</div>
-            <div class="metric-value">{{ today_count }}</div>
-        </div>
-    </div>
-    <div class="col-6 col-md-3">
-        <div class="metric-tile metric-slate text-center">
-            <div class="metric-label">Face Registered</div>
-            <div class="metric-value">{{ face_registered_count }}</div>
+            <div class="metric-label">Total Students</div>
+            <div class="metric-value">{{ total_students }}</div>
         </div>
     </div>
     <div class="col-6 col-md-3">
         <div class="metric-tile metric-orange text-center">
-            <div class="metric-label">Face Pending</div>
-            <div class="metric-value">{{ non_admin_users|length - face_registered_count }}</div>
+            <div class="metric-label">Pending Assignment</div>
+            <div class="metric-value">{{ pending_students }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="metric-tile metric-green text-center">
+            <div class="metric-label">Assigned Students</div>
+            <div class="metric-value">{{ assigned_students }}</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="metric-tile metric-slate text-center">
+            <div class="metric-label">Today's Attendance</div>
+            <div class="metric-value">{{ today_count }}</div>
         </div>
     </div>
 </div>
+
+{# ── Registration Statistics by Department ── #}
+{% if dept_stats %}
+<div class="glass-card mb-4">
+    <div class="section-head">
+        <h5>📊 Registration Statistics by Department</h5>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-hover table-modern align-middle mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Department</th>
+                    <th class="text-center">Total Students</th>
+                    <th class="text-center">Pending Assignment</th>
+                    <th class="text-center">Assigned</th>
+                    <th class="text-center">Progress</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dept, stats in dept_stats.items() %}
+                <tr>
+                    <td class="fw-bold">{{ dept }}</td>
+                    <td class="text-center">{{ stats.total }}</td>
+                    <td class="text-center">
+                        <span class="badge bg-warning text-dark">{{ stats.pending }}</span>
+                    </td>
+                    <td class="text-center">
+                        <span class="badge bg-success">{{ stats.assigned }}</span>
+                    </td>
+                    <td>
+                        {% set progress = (stats.assigned / stats.total * 100) if stats.total > 0 else 0 %}
+                        <div class="progress" style="height: 20px;">
+                            <div class="progress-bar bg-success" role="progressbar" 
+                                 style="width: {{ progress }}%;" 
+                                 aria-valuenow="{{ progress }}" aria-valuemin="0" aria-valuemax="100">
+                                {{ "%.0f"|format(progress) }}%
+                            </div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if pending_students > 0 %}
+    <div class="alert alert-warning mt-3 mb-0">
+        <strong>⚠️ Action Required:</strong> {{ pending_students }} student(s) are waiting for section assignment.
+        <a href="#user-management" class="alert-link">Assign sections now →</a>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
 
 {# ── 7-Day Attendance Heat Grid ── #}
 <div class="glass-card mb-4">
@@ -92,6 +147,173 @@
     </div>
 </div>
 
+{# ── Course Management Section ── #}
+<div class="glass-card mb-4" id="course-management">
+    <div class="section-head">
+        <h5>📚 Course Management</h5>
+    </div>
+    
+    <div class="row g-3 mb-4">
+        {# Create Course Form #}
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="card-title mb-3">➕ Create New Course</h6>
+                    <form method="POST" action="{{ url_for('admin_create_course') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-2">
+                            <input type="text" name="code" class="form-control form-control-sm" placeholder="Course Code (e.g., CS301)" required maxlength="40">
+                        </div>
+                        <div class="mb-2">
+                            <input type="text" name="title" class="form-control form-control-sm" placeholder="Course Title (e.g., Data Structures)" required maxlength="120">
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <input type="text" name="department" class="form-control form-control-sm" placeholder="Department (CSE)" required maxlength="100">
+                            </div>
+                            <div class="col-6">
+                                <input type="number" name="credits" class="form-control form-control-sm" placeholder="Credits" value="3" min="1" max="10">
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <input type="text" name="academic_year" class="form-control form-control-sm" placeholder="Year (2025-26)" required maxlength="20">
+                            </div>
+                            <div class="col-6">
+                                <input type="text" name="semester" class="form-control form-control-sm" placeholder="Semester (1-8)" required maxlength="10">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100">Create Course</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        {# Assign Teacher Form #}
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <h6 class="card-title mb-3">👨‍🏫 Assign Teacher to Section</h6>
+                    <form method="POST" action="{{ url_for('admin_assign_teacher') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-2">
+                            <select name="teacher_id" class="form-select form-select-sm" required>
+                                <option value="">Select Teacher</option>
+                                {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}">{{ teacher.name }} ({{ teacher.department }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <select name="course_id" class="form-select form-select-sm" required id="course-select">
+                                <option value="">Select Course</option>
+                                {# Will be populated via AJAX or server-side #}
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <input type="text" name="section" class="form-control form-control-sm" placeholder="Section (A, B, C)" required maxlength="10" pattern="[A-Z]+" title="Use uppercase letters only">
+                        </div>
+                        <button type="submit" class="btn btn-warning btn-sm w-100">Assign Teacher</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {# Bulk Enrollment #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <h6 class="card-title mb-3">📤 Bulk Student Enrollment (CSV Upload)</h6>
+            <form method="POST" action="{{ url_for('admin_bulk_enroll') }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-8">
+                        <input type="file" name="file" class="form-control form-control-sm" accept=".csv" required>
+                        <small class="text-muted">Format: college_id, name, email, department, section, year, semester, course_code</small>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-success btn-sm w-100">Upload & Enroll</button>
+                    </div>
+                </div>
+            </form>
+            <div class="mt-2">
+                <a href="#" class="text-decoration-none small" data-bs-toggle="modal" data-bs-target="#csvFormatModal">
+                    📋 View CSV Format Example
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    {# Bulk Section Assignment #}
+    <div class="card border-0 shadow-sm mb-3">
+        <div class="card-body">
+            <h6 class="card-title mb-3">🎯 Bulk Section Assignment (CSV Upload)</h6>
+            <form method="POST" action="{{ url_for('admin_bulk_assign_sections') }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-8">
+                        <input type="file" name="file" class="form-control form-control-sm" accept=".csv" required>
+                        <small class="text-muted">Format: email, section, year, semester</small>
+                    </div>
+                    <div class="col-md-4">
+                        <button type="submit" class="btn btn-info btn-sm w-100">Upload & Assign</button>
+                    </div>
+                </div>
+            </form>
+            <div class="mt-2">
+                <a href="#" class="text-decoration-none small" data-bs-toggle="modal" data-bs-target="#sectionCsvModal">
+                    📋 View Section CSV Format
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    {# Manual Enrollment (Students register themselves) #}
+    <div class="card border-0 shadow-sm">
+        <div class="card-body">
+            <h6 class="card-title mb-3">📝 Enroll Student in Course Section</h6>
+            <p class="small text-muted mb-3">
+                <strong>Note:</strong> Students register themselves. You only need to enroll them in courses.
+            </p>
+            <form method="POST" action="{{ url_for('admin_enroll_student') }}" id="enroll-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <select name="student_id" class="form-select form-select-sm" required id="enroll-student-select">
+                            <option value="">Select Student</option>
+                            {% for student in users %}
+                            {% if student.role == 'student' %}
+                            <option value="{{ student.id }}" data-section="{{ student.section or '' }}">
+                                {{ student.name }} ({{ student.college_id or 'No ID' }}) - Sec {{ student.section or '?' }}
+                            </option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <select name="course_id" class="form-select form-select-sm" required id="enroll-course-select">
+                            <option value="">Select Course</option>
+                            {# Will be populated via AJAX #}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <select name="section" class="form-select form-select-sm" required id="enroll-section-select">
+                            <option value="">Section</option>
+                            {# Will be populated based on course selection #}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-success btn-sm w-100">Enroll</button>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted" id="enroll-hint">Select course to see available sections</small>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {# ── User Management Table ── #}
 <div class="glass-card" id="user-management">
     <div class="section-head">
@@ -103,9 +325,11 @@
                 <tr>
                     <th>Name</th>
                     <th>Email</th>
+                    <th>Phone</th>
                     <th>Role</th>
                     <th>Department</th>
-                    <th class="text-center">Face Status</th>
+                    <th class="text-center">Section</th>
+                    <th class="text-center">Status</th>
                     <th class="text-center">Actions</th>
                 </tr>
             </thead>
@@ -115,18 +339,39 @@
                 <tr>
                     <td class="fw-semibold">{{ user.name }}</td>
                     <td class="small text-muted">{{ user.email }}</td>
+                    <td class="small">{{ user.phone or '—' }}</td>
                     <td><span class="badge {% if user.role == 'teacher' %}bg-warning text-dark{% else %}bg-primary{% endif %}">{{ user.role }}</span></td>
                     <td>{{ user.department }}</td>
                     <td class="text-center">
-                        {% if user.face_registered %}
-                        <span class="badge bg-success">✔ Registered</span>
+                        {% if user.role == 'student' %}
+                            {% if user.section %}
+                            <span class="badge bg-info text-dark">{{ user.section }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary">Not Assigned</span>
+                            {% endif %}
                         {% else %}
-                        <span class="badge bg-danger">✗ Pending</span>
+                        —
                         {% endif %}
                     </td>
                     <td class="text-center">
-                        <div class="d-flex gap-1 justify-content-center">
+                        {% if user.role == 'student' %}
+                            {% if user.assignment_status == 'pending' %}
+                            <span class="badge bg-warning text-dark">⏳ Pending</span>
+                            {% else %}
+                            <span class="badge bg-success">✓ Assigned</span>
+                            {% endif %}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
+                    <td class="text-center">
+                        <div class="d-flex gap-1 justify-content-center flex-wrap">
                             <a href="{{ url_for('admin_edit_user', user_id=user.id) }}" class="btn btn-sm btn-outline-primary" title="Edit User">✏ Edit</a>
+                            {% if user.role == 'student' %}
+                            <button class="btn btn-sm btn-outline-info" title="Change Section" data-bs-toggle="modal" data-bs-target="#changeSectionModal{{ user.id }}">
+                                🔄 Section
+                            </button>
+                            {% endif %}
                             <a href="{{ url_for('admin_change_user_role', user_id=user.id) }}" class="btn btn-sm btn-outline-dark" title="Change Role">⇄ Role</a>
                             {% if user.face_registered %}
                             <form method="POST" action="{{ url_for('admin_clear_face', user_id=user.id) }}" style="display: inline;"
@@ -143,6 +388,44 @@
                         </div>
                     </td>
                 </tr>
+                
+                {# Change Section Modal for Students #}
+                {% if user.role == 'student' %}
+                <div class="modal fade" id="changeSectionModal{{ user.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-sm">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h6 class="modal-title">Change Section - {{ user.name }}</h6>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <form method="POST" action="{{ url_for('admin_change_student_section', student_id=user.id) }}">
+                                <div class="modal-body">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <div class="mb-2">
+                                        <label class="form-label small">Current: Section {{ user.section or '?' }}, Year {{ user.year or '?' }}, Sem {{ user.semester or '?' }}</label>
+                                    </div>
+                                    <div class="mb-2">
+                                        <input type="text" name="section" class="form-control form-control-sm" placeholder="New Section (A, B, C)" required maxlength="10" pattern="[A-Z]+" value="{{ user.section or '' }}">
+                                    </div>
+                                    <div class="row g-2">
+                                        <div class="col-6">
+                                            <input type="text" name="year" class="form-control form-control-sm" placeholder="Year" maxlength="10" value="{{ user.year or '' }}">
+                                        </div>
+                                        <div class="col-6">
+                                            <input type="text" name="semester" class="form-control form-control-sm" placeholder="Semester" maxlength="10" value="{{ user.semester or '' }}">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                                    <button type="submit" class="btn btn-sm btn-primary">Update Section</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+                </tr>
                 {% endif %}
                 {% endfor %}
             </tbody>
@@ -153,10 +436,123 @@
 {% endblock %}
 
 {% block footer %}
+{# CSV Format Modal #}
+<div class="modal fade" id="csvFormatModal" tabindex="-1" aria-labelledby="csvFormatModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="csvFormatModalLabel">📋 CSV Format for Bulk Enrollment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Required Columns:</h6>
+                <pre class="bg-light p-3 rounded"><code>college_id,name,email,department,section,year,semester,course_code</code></pre>
+                
+                <h6 class="mt-3">Example Data:</h6>
+                <pre class="bg-light p-3 rounded"><code>2021001,Rahul Kumar,rahul@example.com,CSE,A,3,5,CS301
+2021002,Priya Sharma,priya@example.com,CSE,A,3,5,CS301
+2021003,Amit Singh,amit@example.com,CSE,B,3,5,CS302
+2021004,Neha Gupta,neha@example.com,ECE,A,2,3,EC201</code></pre>
+                
+                <h6 class="mt-3">Rules:</h6>
+                <ul class="small">
+                    <li>Header row is required</li>
+                    <li>Email must be unique</li>
+                    <li>If student exists, only enrollment is created</li>
+                    <li>If student doesn't exist, created with password = college_id</li>
+                    <li>Course must exist (create courses first)</li>
+                    <li>Section must match student's section</li>
+                </ul>
+                
+                <div class="alert alert-info small mb-0">
+                    <strong>💡 Tip:</strong> Students will receive their college_id as default password. Ask them to change it after first login.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Section CSV Format Modal #}
+<div class="modal fade" id="sectionCsvModal" tabindex="-1" aria-labelledby="sectionCsvModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="sectionCsvModalLabel">📋 CSV Format for Bulk Section Assignment</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <h6>Required Columns:</h6>
+                <pre class="bg-light p-3 rounded"><code>email,section,year,semester</code></pre>
+                
+                <h6 class="mt-3">Example Data:</h6>
+                <pre class="bg-light p-3 rounded"><code>rahul@example.com,A,2,3
+priya@example.com,A,2,3
+amit@example.com,B,2,3
+neha@example.com,C,2,3</code></pre>
+                
+                <h6 class="mt-3">Rules:</h6>
+                <ul class="small">
+                    <li>Header row is required</li>
+                    <li>Email must match existing student</li>
+                    <li>Section is required (A, B, C, etc.)</li>
+                    <li>Year and semester are optional</li>
+                    <li>Assignment status automatically updated to 'assigned'</li>
+                </ul>
+                
+                <div class="alert alert-success small mb-0">
+                    <strong>✅ Use Case:</strong> Perfect for assigning sections to pending students after registration.
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     // Event listeners for admin buttons (security: no inline onclick)
     document.getElementById('admin-print-btn')?.addEventListener('click', function() {
         window.print();
+    });
+    
+    // Generate sessions button
+    document.getElementById('generate-sessions-btn')?.addEventListener('click', function() {
+        if (!confirm('Generate sessions from timetable? This will create sessions for classes starting in the next 15-30 minutes.')) {
+            return;
+        }
+        
+        const btn = this;
+        btn.disabled = true;
+        btn.textContent = '⏳ Generating...';
+        
+        fetch('/api/admin/generate_sessions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token() }}'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert(`✅ ${data.message}`);
+                location.reload();
+            } else {
+                alert(`❌ ${data.message}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Failed to generate sessions. Check console for details.');
+        })
+        .finally(() => {
+            btn.disabled = false;
+            btn.textContent = '🔄 Generate Sessions';
+        });
     });
     
     // Confirm dialogs for destructive actions
@@ -166,6 +562,116 @@
                 e.preventDefault();
             }
         });
+    });
+    
+    // Load courses for teacher assignment dropdown
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load courses for teacher assignment
+        fetch('/api/admin/courses')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('course-select');
+                if (select && data.courses) {
+                    data.courses.forEach(course => {
+                        const option = document.createElement('option');
+                        option.value = course.id;
+                        option.textContent = `${course.code} - ${course.title} (${course.department})`;
+                        select.appendChild(option);
+                    });
+                }
+                
+                // Also populate enroll course dropdown
+                const enrollSelect = document.getElementById('enroll-course-select');
+                if (enrollSelect && data.courses) {
+                    data.courses.forEach(course => {
+                        const option = document.createElement('option');
+                        option.value = course.id;
+                        option.textContent = `${course.code} - ${course.title} (${course.department})`;
+                        enrollSelect.appendChild(option);
+                    });
+                }
+            })
+            .catch(error => console.error('Error loading courses:', error));
+        
+        // Handle course selection change for enrollment form
+        const enrollCourseSelect = document.getElementById('enroll-course-select');
+        const enrollSectionSelect = document.getElementById('enroll-section-select');
+        const enrollStudentSelect = document.getElementById('enroll-student-select');
+        const enrollHint = document.getElementById('enroll-hint');
+        
+        if (enrollCourseSelect && enrollSectionSelect) {
+            enrollCourseSelect.addEventListener('change', function() {
+                const courseId = this.value;
+                
+                // Clear section dropdown
+                enrollSectionSelect.innerHTML = '<option value="">Section</option>';
+                
+                if (!courseId) {
+                    enrollHint.textContent = 'Select course to see available sections';
+                    enrollHint.className = 'text-muted';
+                    return;
+                }
+                
+                enrollHint.textContent = 'Loading sections...';
+                enrollHint.className = 'text-info';
+                
+                // Fetch available sections for this course
+                fetch(`/api/admin/course_sections/${courseId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.sections && data.sections.length > 0) {
+                            data.sections.forEach(sec => {
+                                const option = document.createElement('option');
+                                option.value = sec.section;
+                                option.textContent = `Section ${sec.section} (${sec.teacher_name})`;
+                                enrollSectionSelect.appendChild(option);
+                            });
+                            
+                            enrollHint.textContent = `${data.sections.length} section(s) available for ${data.course_code}`;
+                            enrollHint.className = 'text-success';
+                            
+                            // Check if selected student's section matches any available section
+                            const selectedStudent = enrollStudentSelect.options[enrollStudentSelect.selectedIndex];
+                            if (selectedStudent && selectedStudent.dataset.section) {
+                                const studentSection = selectedStudent.dataset.section;
+                                const matchingSection = data.sections.find(s => s.section === studentSection);
+                                
+                                if (matchingSection) {
+                                    enrollSectionSelect.value = studentSection;
+                                    enrollHint.textContent = `✓ Student's section (${studentSection}) matches available sections`;
+                                    enrollHint.className = 'text-success';
+                                } else if (studentSection) {
+                                    enrollHint.textContent = `⚠️ Student is in Section ${studentSection}, but no teacher assigned to that section yet`;
+                                    enrollHint.className = 'text-warning';
+                                }
+                            }
+                        } else {
+                            enrollHint.textContent = '⚠️ No sections available. Assign a teacher to this course first.';
+                            enrollHint.className = 'text-warning';
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error loading sections:', error);
+                        enrollHint.textContent = 'Error loading sections';
+                        enrollHint.className = 'text-danger';
+                    });
+            });
+            
+            // When student is selected, show their current section info
+            enrollStudentSelect.addEventListener('change', function() {
+                const selectedOption = this.options[this.selectedIndex];
+                const studentSection = selectedOption.dataset.section;
+                const courseId = enrollCourseSelect.value;
+                
+                if (studentSection && courseId) {
+                    // Re-trigger course change to check section match
+                    enrollCourseSelect.dispatchEvent(new Event('change'));
+                } else if (studentSection) {
+                    enrollHint.textContent = `Student is in Section ${studentSection}. Select a course to continue.`;
+                    enrollHint.className = 'text-info';
+                }
+            });
+        }
     });
 </script>
 {% endblock %}

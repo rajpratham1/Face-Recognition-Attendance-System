@@ -15,8 +15,15 @@
             <p class="mb-0" style="opacity:.9;">{{ app_program_name }} - Full Platform View</p>
         </div>
         <div class="d-flex gap-2">
-            <button id="admin-print-btn" class="btn btn-hero-action">🖨 Print Report</button>
-            <button id="generate-sessions-btn" class="btn btn-success btn-sm">🔄 Generate Sessions</button>
+            <button id="admin-refresh-btn" class="btn btn-hero-action">
+                <i class="fas fa-sync-alt me-1"></i> Refresh
+            </button>
+            <button id="admin-print-btn" class="btn btn-hero-action">
+                <i class="fas fa-print me-1"></i> Print
+            </button>
+            <button id="generate-sessions-btn" class="btn btn-success btn-sm">
+                <i class="fas fa-magic me-1"></i> Generate Sessions
+            </button>
         </div>
     </div>
 </div>
@@ -25,26 +32,62 @@
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
         <div class="metric-tile metric-blue text-center">
-            <div class="metric-label">Total Students</div>
-            <div class="metric-value">{{ total_students }}</div>
+            <div class="metric-label"><i class="fas fa-user-graduate me-1"></i> Total Students</div>
+            <div class="metric-value" id="stat-total-students">{{ total_students }}</div>
         </div>
     </div>
     <div class="col-6 col-md-3">
         <div class="metric-tile metric-orange text-center">
-            <div class="metric-label">Pending Assignment</div>
-            <div class="metric-value">{{ pending_students }}</div>
+            <div class="metric-label"><i class="fas fa-clock me-1"></i> Pending Assignment</div>
+            <div class="metric-value" id="stat-pending">{{ pending_students }}</div>
         </div>
     </div>
     <div class="col-6 col-md-3">
         <div class="metric-tile metric-green text-center">
-            <div class="metric-label">Assigned Students</div>
-            <div class="metric-value">{{ assigned_students }}</div>
+            <div class="metric-label"><i class="fas fa-check-circle me-1"></i> Assigned Students</div>
+            <div class="metric-value" id="stat-assigned">{{ assigned_students }}</div>
         </div>
     </div>
     <div class="col-6 col-md-3">
         <div class="metric-tile metric-slate text-center">
-            <div class="metric-label">Today's Attendance</div>
-            <div class="metric-value">{{ today_count }}</div>
+            <div class="metric-label"><i class="fas fa-calendar-check me-1"></i> Today's Attendance</div>
+            <div class="metric-value" id="stat-today">{{ today_count }}</div>
+        </div>
+    </div>
+</div>
+
+{# Additional Stats Row #}
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center">
+            <div class="card-body py-3">
+                <div class="small text-muted mb-1"><i class="fas fa-chalkboard-teacher me-1"></i> Teachers</div>
+                <div class="h4 mb-0" id="stat-teachers">{{ teachers|length }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center">
+            <div class="card-body py-3">
+                <div class="small text-muted mb-1"><i class="fas fa-book me-1"></i> Courses</div>
+                <div class="h4 mb-0" id="stat-courses">-</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center">
+            <div class="card-body py-3">
+                <div class="small text-muted mb-1"><i class="fas fa-broadcast-tower me-1"></i> Active Sessions</div>
+                <div class="h4 mb-0 text-success" id="stat-active-sessions">-</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm text-center">
+            <div class="card-body py-3">
+                <div class="small text-muted mb-1"><i class="fas fa-exclamation-triangle me-1"></i> Low Attendance</div>
+                <div class="h4 mb-0 text-danger" id="stat-low-attendance">-</div>
+            </div>
         </div>
     </div>
 </div>
@@ -519,6 +562,35 @@ neha@example.com,C,2,3</code></pre>
         window.print();
     });
     
+    // Refresh button
+    document.getElementById('admin-refresh-btn')?.addEventListener('click', function() {
+        refreshAdminStats();
+    });
+    
+    // Auto-refresh admin stats
+    function refreshAdminStats() {
+        fetch('/api/admin/dashboard_stats')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    document.getElementById('stat-total-students').textContent = data.total_students || 0;
+                    document.getElementById('stat-teachers').textContent = data.total_teachers || 0;
+                    document.getElementById('stat-courses').textContent = data.total_courses || 0;
+                    document.getElementById('stat-active-sessions').textContent = data.active_sessions || 0;
+                    document.getElementById('stat-low-attendance').textContent = data.low_attendance_count || 0;
+                    document.getElementById('stat-pending').textContent = data.pending_assignments || 0;
+                    document.getElementById('stat-today').textContent = data.today_attendance || 0;
+                }
+            })
+            .catch(error => console.error('Error refreshing admin stats:', error));
+    }
+    
+    // Load stats on page load
+    document.addEventListener('DOMContentLoaded', refreshAdminStats);
+    
+    // Auto-refresh every 60 seconds
+    setInterval(refreshAdminStats, 60000);
+    
     // Generate sessions button
     document.getElementById('generate-sessions-btn')?.addEventListener('click', function() {
         if (!confirm('Generate sessions from timetable? This will create sessions for classes starting in the next 15-30 minutes.')) {
@@ -526,8 +598,9 @@ neha@example.com,C,2,3</code></pre>
         }
         
         const btn = this;
+        const originalHTML = btn.innerHTML;
         btn.disabled = true;
-        btn.textContent = '⏳ Generating...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Generating...';
         
         fetch('/api/admin/generate_sessions', {
             method: 'POST',
@@ -551,7 +624,7 @@ neha@example.com,C,2,3</code></pre>
         })
         .finally(() => {
             btn.disabled = false;
-            btn.textContent = '🔄 Generate Sessions';
+            btn.innerHTML = originalHTML;
         });
     });
     

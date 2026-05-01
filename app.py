@@ -1934,7 +1934,340 @@ def student_attendance_stats():
         "overall_percentage": overall_percentage,
         "failed_attempts": failed_attempts,
         "recent_attended": recent_attended,
-        "status": "good" if overall_percentage >= 75 else "warning" if overall_percentage >= 60 else "critical"
+        "status": "good" if overall_percentage >= 75 else "warning" if overall_percentage >= 60 else "critical",
+        "courses": [
+            {
+                "course_code": e.course.code,
+                "course_title": e.course.title,
+                "attended_sessions": SessionAttendance.query.filter_by(
+                    student_id=current_user.id
+                ).join(ClassSession).filter(
+                    ClassSession.course_id == e.course_id
+                ).count(),
+                "total_sessions": ClassSession.query.filter_by(
+                    course_id=e.course_id
+                ).filter(
+                    ClassSession.starts_at <= now_utc_naive()
+                ).count(),
+                "percentage": round(
+                    (SessionAttendance.query.filter_by(
+                        student_id=current_user.id
+                    ).join(ClassSession).filter(
+                        ClassSession.course_id == e.course_id
+                    ).count() / 
+                    max(1, ClassSession.query.filter_by(
+                        course_id=e.course_id
+                    ).filter(
+                        ClassSession.starts_at <= now_utc_naive()
+                    ).count())) * 100, 2
+                ),
+                "status": "good" if (SessionAttendance.query.filter_by(
+                    student_id=current_user.id
+                ).join(ClassSession).filter(
+                    ClassSession.course_id == e.course_id
+                ).count() / 
+                max(1, ClassSession.query.filter_by(
+                    course_id=e.course_id
+                ).filter(
+                    ClassSession.starts_at <= now_utc_naive()
+                ).count())) * 100 >= 75 else "warning" if (SessionAttendance.query.filter_by(
+                    student_id=current_user.id
+                ).join(ClassSession).filter(
+                    ClassSession.course_id == e.course_id
+                ).count() / 
+                max(1, ClassSession.query.filter_by(
+                    course_id=e.course_id
+                ).filter(
+                    ClassSession.starts_at <= now_utc_naive()
+                ).count())) * 100 >= 60 else "critical"
+            }
+            for e in enrolled_courses
+        ]
+    })
+
+
+@app.route("/api/student/attendance_insights")
+@login_required
+def student_attendance_insights():
+    """Get smart attendance insights and predictions for student"""
+    if current_user.role != "student":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    # Get enrolled courses
+    enrollments = Enrollment.query.filter_by(
+        student_id=current_user.id,
+        is_active=True
+    ).all()
+    
+    insights = []
+    target_percentage = 75
+    
+    for enrollment in enrollments:
+        course = enrollment.course
+        
+        # Get total sessions for this course
+        total_sessions = ClassSession.query.filter_by(
+            course_id=course.id
+        ).filter(
+            ClassSession.starts_at <= now_utc_naive()
+        ).count()
+        
+        if total_sessions == 0:
+            continue
+        
+        # Get attended sessions
+        attended = SessionAttendance.query.filter_by(
+            student_id=current_user.id
+        ).join(ClassSession).filter(
+            ClassSession.course_id == course.id
+        ).count()
+        
+        current_percentage = (attended / total_sessions * 100) if total_sessions > 0 else 0
+        
+        # Calculate classes needed to reach target
+        if current_percentage >= target_percentage:
+            classes_needed = 0
+            message = f'Great! You are above {target_percentage}% attendance.'
+            status = 'good'
+        else:
+            # Formula: (attended + x) / (total + x) >= target/100
+            # Solving: x >= (target*total - 100*attended) / (100 - target)
+            classes_needed = max(0, int(
+                (target_percentage * total_sessions - 100 * attended) / 
+                (100 - target_percentage)
+            ) + 1)
+            message = f'Attend next {classes_needed} classes to reach {target_percentage}%'
+            
+            if current_percentage >= 65:
+                status = 'warning'
+            else:
+                status = 'critical'
+        
+        insights.append({
+            'course_code': course.code,
+            'course_title': course.title,
+            'current_percentage': round(current_percentage, 2),
+            'attended': attended,
+            'total': total_sessions,
+            'classes_needed': classes_needed,
+            'message': message,
+            'status': status
+        })
+    
+    # Calculate attendance streak
+    recent_attendance = SessionAttendance.query.filter_by(
+        student_id=current_user.id
+    ).join(ClassSession).order_by(
+        ClassSession.starts_at.desc()
+    ).limit(30).all()
+    
+    streak = 0
+    if recent_attendance:
+        last_date = None
+        for att in recent_attendance:
+            session_date = att.session.starts_at.date()
+            
+            if last_date is None:
+                streak = 1
+                last_date = session_date
+            elif (last_date - session_date).days == 1:
+                streak += 1
+                last_date = session_date
+            else:
+                break
+    
+    return jsonify({
+        'success': True,
+        'insights': insights,
+        'streak': streak,
+        'streak_message': f'🔥 {streak} day streak!' if streak > 0 else 'Start your streak today!'
+    })
+
+
+@app.route("/api/student/active_sessions")
+@login_required
+def api_student_active_sessions():
+    """Get active sessions for student with real-time data"""
+    if current_user.role != "student":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    now = now_utc_naive()
+    
+    # Get enrolled course IDs
+    course_ids = [e.course_id for e in Enrollment.query.filter_by(
+        student_id=current_user.id, is_active=True
+    ).all()]
+    
+    if not course_ids:
+        return jsonify({"success": True, "sessions": []})
+    
+    # Get active sessions
+    sessions = ClassSession.query.filter(
+        ClassSession.course_id.in_(course_ids),
+        ClassSession.is_active == True,
+        ClassSession.starts_at <= now,
+        ClassSession.ends_at >= now
+    ).order_by(ClassSession.ends_at.asc()).all()
+    
+    # Check which sessions student has already marked
+    marked_session_ids = {sa.session_id for sa in SessionAttendance.query.filter_by(
+        student_id=current_user.id
+    ).all()}
+    
+    session_data = []
+    for session in sessions:
+        session_data.append({
+            "id": session.id,
+            "course_code": session.course_code,
+            "title": session.title,
+            "room": session.room,
+            "section": session.section,
+            "already_marked": session.id in marked_session_ids,
+            "time_remaining_minutes": int((session.ends_at - now).total_seconds() / 60) if session.ends_at > now else 0
+        })
+    
+    return jsonify({
+        "success": True,
+        "sessions": session_data,
+        "count": len(session_data)
+    })
+
+
+@app.route("/api/teacher/dashboard_stats")
+@login_required
+def api_teacher_dashboard_stats():
+    """Get comprehensive dashboard statistics for teacher"""
+    if current_user.role != "teacher":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    # Get assigned courses
+    assignments = TeacherAssignment.query.filter_by(
+        teacher_id=current_user.id,
+        is_active=True
+    ).all()
+    
+    course_ids = list(set([a.course_id for a in assignments]))
+    
+    # Get unique students across all courses
+    if course_ids:
+        students = User.query.join(Enrollment).filter(
+            Enrollment.course_id.in_(course_ids),
+            Enrollment.is_active == True,
+            User.role == "student"
+        ).distinct().all()
+    else:
+        students = []
+    
+    # Get active sessions count
+    now = now_utc_naive()
+    active_sessions = ClassSession.query.filter(
+        ClassSession.teacher_id == current_user.id,
+        ClassSession.is_active == True,
+        ClassSession.starts_at <= now,
+        ClassSession.ends_at >= now
+    ).count()
+    
+    return jsonify({
+        "success": True,
+        "total_courses": len(course_ids),
+        "total_students": len(students),
+        "active_sessions": active_sessions,
+        "total_assignments": len(assignments)
+    })
+
+
+@app.route("/api/teacher/session/<int:session_id>/stats")
+@login_required
+def api_teacher_session_stats(session_id):
+    """Get real-time statistics for a session"""
+    if current_user.role != "teacher":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    session = ClassSession.query.filter_by(
+        id=session_id,
+        teacher_id=current_user.id
+    ).first()
+    
+    if not session:
+        return jsonify({"error": "Session not found"}), 404
+    
+    # Get enrolled students count
+    enrolled_count = 0
+    if session.course_id:
+        query = Enrollment.query.filter_by(course_id=session.course_id, is_active=True)
+        if session.section:
+            query = query.join(User).filter(User.section == session.section)
+        enrolled_count = query.count()
+    
+    # Get attendance count
+    attendance_count = SessionAttendance.query.filter_by(session_id=session_id).count()
+    
+    # Get failed attempts count
+    failed_attempts = AttendanceAttempt.query.filter_by(
+        session_id=session_id,
+        success=False
+    ).count()
+    
+    # Calculate percentage
+    percentage = (attendance_count / enrolled_count * 100) if enrolled_count > 0 else 0
+    
+    return jsonify({
+        "success": True,
+        "session_id": session_id,
+        "enrolled": enrolled_count,
+        "marked": attendance_count,
+        "failed": failed_attempts,
+        "pending": enrolled_count - attendance_count,
+        "percentage": round(percentage, 2)
+    })
+
+
+@app.route("/api/admin/dashboard_stats")
+@login_required
+def api_admin_dashboard_stats():
+    """Get comprehensive dashboard statistics for admin"""
+    if current_user.role != "admin":
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    # Total users by role
+    total_students = User.query.filter_by(role="student", is_active=True).count()
+    total_teachers = User.query.filter_by(role="teacher", is_active=True).count()
+    
+    # Pending section assignments
+    pending_assignments = User.query.filter_by(
+        role="student",
+        assignment_status="pending",
+        is_active=True
+    ).count()
+    
+    # Total courses
+    total_courses = Course.query.filter_by(is_active=True).count()
+    
+    # Active sessions right now
+    now = now_utc_naive()
+    active_sessions = ClassSession.query.filter(
+        ClassSession.is_active == True,
+        ClassSession.starts_at <= now,
+        ClassSession.ends_at >= now
+    ).count()
+    
+    # Today's attendance count
+    local_now = datetime.now(ZoneInfo(app.config["APP_TIMEZONE"]))
+    today_date = local_now.date()
+    today_attendance = Attendance.query.filter_by(date=today_date).count()
+    
+    # Low attendance count (simplified for performance)
+    low_attendance_count = 0
+    
+    return jsonify({
+        "success": True,
+        "total_students": total_students,
+        "total_teachers": total_teachers,
+        "pending_assignments": pending_assignments,
+        "total_courses": total_courses,
+        "active_sessions": active_sessions,
+        "today_attendance": today_attendance,
+        "low_attendance_count": low_attendance_count
     })
 
 

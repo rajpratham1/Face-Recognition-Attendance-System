@@ -1,18 +1,46 @@
 {% extends "base.html" %}
 
 {% block content %}
+{# Low Attendance Alert Banner #}
+<div id="low-attendance-alert" class="alert alert-warning alert-dismissible fade show mb-3" style="display: none;">
+    <strong>⚠️ Low Attendance Warning!</strong>
+    <p class="mb-2 small" id="alert-message"></p>
+    <div id="alert-courses"></div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+
+{# Attendance Streak Banner #}
+<div id="streak-banner" class="alert alert-success alert-dismissible fade show mb-3" style="display: none;">
+    <div class="d-flex align-items-center">
+        <div class="me-3" style="font-size: 2rem;">🔥</div>
+        <div>
+            <strong id="streak-title"></strong>
+            <p class="mb-0 small" id="streak-message"></p>
+        </div>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+
 <div class="dashboard-shell reveal-up mb-4">
     <div class="dashboard-hero">
         <span class="hero-kicker">Student Workspace</span>
         <h3 class="mb-1">Hi {{ current_user.name }}, you're all set</h3>
         <p class="mb-2" style="opacity:.9;">Track live classes and monitor your attendance progress in real time.</p>
         <div class="hero-stat-pills">
-            <span class="hero-stat-pill">Live Sessions: {{ active_sessions|length }}</span>
-            <span class="hero-stat-pill">Attendance: {{ attendance_percentage }}%</span>
-            <span class="hero-stat-pill">Records: {{ session_records|length }}</span>
+            <span class="hero-stat-pill">Live Sessions: <span id="live-count">{{ active_sessions|length }}</span></span>
+            <span class="hero-stat-pill" id="attendance-pill">Attendance: {{ attendance_percentage }}%</span>
+            <span class="hero-stat-pill">Records: <span id="records-count">{{ session_records|length }}</span></span>
         </div>
         <div class="d-flex flex-wrap gap-2 mt-3">
-            <a href="{{ url_for('mark_attendance') }}" class="btn btn-light btn-sm">Mark Attendance</a>
+            <a href="{{ url_for('mark_attendance') }}" class="btn btn-light btn-sm">
+                <i class="fas fa-camera me-1"></i> Mark Attendance
+            </a>
+            <a href="{{ url_for('student_failed_attempts') }}" class="btn btn-outline-light btn-sm">
+                <i class="fas fa-exclamation-triangle me-1"></i> Failed Attempts
+            </a>
+            <a href="{{ url_for('attendance_calendar') }}" class="btn btn-outline-light btn-sm">
+                <i class="fas fa-calendar me-1"></i> Calendar View
+            </a>
             <a href="#daily-records" class="btn btn-outline-light btn-sm">My Records</a>
         </div>
     </div>
@@ -23,7 +51,39 @@
         <div class="glass-card text-center h-100">
             <div class="avatar-pill mb-3">{{ current_user.name[0] }}</div>
             <h4 class="mb-1">{{ current_user.name }}</h4>
-            <p class="text-muted mb-3">Student Panel  -  {{ current_user.department }}</p>
+            <p class="text-muted mb-1">{{ current_user.department }}</p>
+            {% if current_user.section %}
+            <p class="small mb-3">
+                <span class="badge bg-primary">Section {{ current_user.section }}</span>
+                <span class="badge bg-info text-dark">Year {{ current_user.year or '?' }}</span>
+                <span class="badge bg-secondary">Sem {{ current_user.semester or '?' }}</span>
+            </p>
+            {% else %}
+            <p class="small text-warning mb-3">
+                ⚠️ Section not assigned yet. Contact admin.
+            </p>
+            {% endif %}
+            
+            {# Quick Stats #}
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body p-2">
+                            <div class="small text-muted">Courses</div>
+                            <div class="h5 mb-0" id="stat-courses">-</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-6">
+                    <div class="card border-0 bg-light">
+                        <div class="card-body p-2">
+                            <div class="small text-muted">Sessions</div>
+                            <div class="h5 mb-0" id="stat-sessions">-</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <a href="{{ url_for('mark_attendance') }}" class="btn btn-custom w-100 mb-2">Open Session Attendance</a>
             <div class="panel-metric mt-2"><span>Live Sessions</span><strong>{{ active_sessions|length }}</strong></div>
             <hr class="my-3">
@@ -35,31 +95,66 @@
     </div>
 
     <div class="col-lg-8">
+        {# Smart Attendance Insights Section #}
+        <div class="glass-card mb-4" id="attendance-insights">
+            <div class="section-head">
+                <h5><i class="fas fa-chart-line me-2"></i>Smart Attendance Insights</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="refreshInsights()">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+            <div id="insights-container">
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mt-2">Loading your attendance insights...</p>
+                </div>
+            </div>
+        </div>
+
+        {# Course Breakdown with Predictions #}
         <div class="glass-card mb-4">
-            <div class="section-head"><h4>My Course Attendance Breakdown</h4></div>
+            <div class="section-head">
+                <h4><i class="fas fa-graduation-cap me-2"></i>My Course Attendance Breakdown</h4>
+            </div>
             <div id="course-breakdown">
                 <p class="text-muted small">Loading…</p>
             </div>
         </div>
 
         <div class="glass-card mb-4">
-            <div class="section-head"><h4>Live Classes Available</h4></div>
+            <div class="section-head">
+                <h4><i class="fas fa-broadcast-tower me-2"></i>Live Classes Available</h4>
+                <span class="badge bg-success" id="live-badge">{{ active_sessions|length }} Active</span>
+            </div>
             {% if active_sessions %}
-            <div class="session-grid">
+            <div class="session-grid" id="live-sessions-grid">
                 {% for session in active_sessions %}
                 <div class="session-card student-live">
-                    <h6 class="mb-1">{{ session.course_code }}  -  {{ session.title }}</h6>
-                    <p class="small text-muted mb-1">Room: {{ session.room }}</p>
-                    <p class="small mb-1">Ends at {{ session.ends_at|localdtfmt('%I:%M %p') }} ({{ app_timezone }})</p>
-                    <p class="small mb-0 fw-bold att-warn" id="countdown-{{ session.id }}"
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div>
+                            <h6 class="mb-1">{{ session.course_code }} - {{ session.title }}</h6>
+                            <p class="small text-muted mb-1"><i class="fas fa-door-open me-1"></i>Room: {{ session.room }}</p>
+                        </div>
+                        <span class="badge bg-success">LIVE</span>
+                    </div>
+                    <p class="small mb-1"><i class="fas fa-clock me-1"></i>Ends at {{ session.ends_at|localdtfmt('%I:%M %p') }} ({{ app_timezone }})</p>
+                    <p class="small mb-2 fw-bold att-warn" id="countdown-{{ session.id }}"
                        data-ends="{{ session.ends_at|localdtfmt('%Y-%m-%dT%H:%M:%S') }}">
                         ⏱ Calculating…
                     </p>
+                    <a href="{{ url_for('mark_attendance') }}?session_id={{ session.id }}" class="btn btn-sm btn-success w-100">
+                        <i class="fas fa-camera me-1"></i> Mark Attendance Now
+                    </a>
                 </div>
                 {% endfor %}
             </div>
             {% else %}
-            <p class="text-muted mb-0">No live session right now. Wait for your teacher to start one.</p>
+            <div class="text-center py-4">
+                <i class="fas fa-clock text-muted" style="font-size: 3rem;"></i>
+                <p class="text-muted mt-3 mb-0">No live session right now. Wait for your teacher to start one.</p>
+            </div>
             {% endif %}
         </div>
 
@@ -158,5 +253,217 @@
       bar.style.width = pct + '%';
       bar.style.transition = 'width 0.6s ease';
   });
+  
+  // ── Load Smart Attendance Insights ──────────────────────────────────────
+  function loadAttendanceInsights() {
+      fetch('/api/student/attendance_insights')
+          .then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  const container = document.getElementById('insights-container');
+                  
+                  // Show streak banner if exists
+                  if (data.streak && data.streak > 0) {
+                      const streakBanner = document.getElementById('streak-banner');
+                      const streakTitle = document.getElementById('streak-title');
+                      const streakMessage = document.getElementById('streak-message');
+                      
+                      streakTitle.textContent = data.streak_message;
+                      streakMessage.textContent = `Keep it up! You've attended ${data.streak} consecutive day(s) of classes.`;
+                      streakBanner.style.display = 'block';
+                  }
+                  
+                  // Build insights cards
+                  let html = '<div class="row g-3">';
+                  
+                  if (data.insights && data.insights.length > 0) {
+                      data.insights.forEach(insight => {
+                          const statusClass = insight.status === 'good' ? 'success' : 
+                                            (insight.status === 'warning' ? 'warning' : 'danger');
+                          const statusIcon = insight.status === 'good' ? '✓' : 
+                                           (insight.status === 'warning' ? '⚠' : '✗');
+                          const progressWidth = Math.min(insight.current_percentage, 100);
+                          
+                          html += `
+                              <div class="col-md-6">
+                                  <div class="card border-${statusClass} h-100">
+                                      <div class="card-body">
+                                          <div class="d-flex justify-content-between align-items-start mb-2">
+                                              <div>
+                                                  <h6 class="card-title mb-0">${insight.course_code}</h6>
+                                                  <p class="small text-muted mb-0">${insight.course_title}</p>
+                                              </div>
+                                              <span class="badge bg-${statusClass}">${statusIcon} ${insight.current_percentage}%</span>
+                                          </div>
+                                          
+                                          <div class="progress mb-2" style="height: 8px;">
+                                              <div class="progress-bar bg-${statusClass}" 
+                                                   style="width: ${progressWidth}%"></div>
+                                          </div>
+                                          
+                                          <div class="d-flex justify-content-between align-items-center mb-2">
+                                              <span class="small text-muted">Attended</span>
+                                              <span class="small fw-bold">${insight.attended}/${insight.total} sessions</span>
+                                          </div>
+                                          
+                                          ${insight.classes_needed > 0 ? `
+                                              <div class="alert alert-${statusClass} py-2 px-2 mb-0 small">
+                                                  <i class="fas fa-info-circle me-1"></i>
+                                                  <strong>Action Required:</strong> Attend next <strong>${insight.classes_needed}</strong> class${insight.classes_needed > 1 ? 'es' : ''} to reach 75%
+                                              </div>
+                                          ` : `
+                                              <div class="alert alert-success py-2 px-2 mb-0 small">
+                                                  <i class="fas fa-check-circle me-1"></i>
+                                                  ${insight.message}
+                                              </div>
+                                          `}
+                                      </div>
+                                  </div>
+                              </div>
+                          `;
+                      });
+                  } else {
+                      html += `
+                          <div class="col-12">
+                              <div class="alert alert-info mb-0">
+                                  <i class="fas fa-info-circle me-2"></i>
+                                  No course enrollment found. Contact your admin to enroll in courses.
+                              </div>
+                          </div>
+                      `;
+                  }
+                  
+                  html += '</div>';
+                  container.innerHTML = html;
+              }
+          })
+          .catch(error => {
+              console.error('Error loading insights:', error);
+              document.getElementById('insights-container').innerHTML = `
+                  <div class="alert alert-danger">
+                      <i class="fas fa-exclamation-triangle me-2"></i>
+                      Failed to load insights. Please refresh the page.
+                  </div>
+              `;
+          });
+  }
+  
+  function refreshInsights() {
+      document.getElementById('insights-container').innerHTML = `
+          <div class="text-center py-4">
+              <div class="spinner-border text-primary" role="status">
+                  <span class="visually-hidden">Loading...</span>
+              </div>
+              <p class="text-muted mt-2">Refreshing insights...</p>
+          </div>
+      `;
+      loadAttendanceInsights();
+      loadAttendanceStats();
+  }
+  
+  // ── Load Attendance Stats ──────────────────────────────────────────────
+  function loadAttendanceStats() {
+      fetch('/api/student/attendance_stats')
+          .then(response => response.json())
+          .then(data => {
+              if (data.total_courses !== undefined) {
+                  document.getElementById('stat-courses').textContent = data.total_courses;
+                  document.getElementById('stat-sessions').textContent = data.total_sessions;
+                  
+                  // Update attendance pill color based on status
+                  const pill = document.getElementById('attendance-pill');
+                  if (pill) {
+                      pill.textContent = `Attendance: ${data.overall_percentage}%`;
+                      if (data.status === 'critical') {
+                          pill.style.backgroundColor = '#dc3545';
+                          pill.style.color = 'white';
+                      } else if (data.status === 'warning') {
+                          pill.style.backgroundColor = '#ffc107';
+                          pill.style.color = 'black';
+                      } else {
+                          pill.style.backgroundColor = '#10b981';
+                          pill.style.color = 'white';
+                      }
+                  }
+                  
+                  // Update course breakdown
+                  const breakdownDiv = document.getElementById('course-breakdown');
+                  if (data.courses && data.courses.length > 0) {
+                      let html = '<div class="row g-2">';
+                      data.courses.forEach(course => {
+                          const statusClass = course.status === 'good' ? 'success' : 
+                                            (course.status === 'warning' ? 'warning' : 'danger');
+                          const statusIcon = course.status === 'good' ? '✓' : 
+                                           (course.status === 'warning' ? '⚠' : '✗');
+                          
+                          html += `
+                              <div class="col-md-6">
+                                  <div class="card border-0 shadow-sm">
+                                      <div class="card-body p-3">
+                                          <h6 class="card-title mb-1">${course.course_code}</h6>
+                                          <p class="small text-muted mb-2">${course.course_title}</p>
+                                          <div class="d-flex justify-content-between align-items-center">
+                                              <span class="badge bg-${statusClass}">${statusIcon} ${course.percentage}%</span>
+                                              <span class="small text-muted">${course.attended_sessions}/${course.total_sessions}</span>
+                                          </div>
+                                      </div>
+                                  </div>
+                              </div>
+                          `;
+                      });
+                      html += '</div>';
+                      breakdownDiv.innerHTML = html;
+                  } else {
+                      breakdownDiv.innerHTML = '<p class="text-muted small">No courses enrolled yet.</p>';
+                  }
+              }
+          })
+          .catch(error => console.error('Error loading stats:', error));
+  }
+  
+  // Load on page load
+  document.addEventListener('DOMContentLoaded', function() {
+      loadAttendanceInsights();
+      loadAttendanceStats();
+  });
+  
+  // Refresh stats every 30 seconds
+  setInterval(function() {
+      loadAttendanceStats();
+      // Also refresh live session count
+      fetch('/api/student/active_sessions')
+          .then(response => response.json())
+          .then(data => {
+              if (data.sessions) {
+                  document.getElementById('live-count').textContent = data.sessions.length;
+                  document.getElementById('live-badge').textContent = `${data.sessions.length} Active`;
+              }
+          })
+          .catch(error => console.error('Error refreshing live sessions:', error));
+  }, 30000);
+  
+  // ── Check for Low Attendance Alert ─────────────────────────────────────
+  fetch('/api/student/attendance_alert')
+      .then(response => response.json())
+      .then(data => {
+          if (data.alert && data.low_courses && data.low_courses.length > 0) {
+              const alertDiv = document.getElementById('low-attendance-alert');
+              const messageDiv = document.getElementById('alert-message');
+              const coursesDiv = document.getElementById('alert-courses');
+              
+              messageDiv.textContent = `You have low attendance (below ${data.threshold}%) in ${data.low_courses.length} course(s). Attend more classes to avoid academic issues.`;
+              
+              let coursesHTML = '<ul class="mb-0 small">';
+              data.low_courses.forEach(course => {
+                  coursesHTML += `<li><strong>${course.course_code}</strong>: ${course.percentage}% (${course.attended}/${course.total} sessions) - Need ${course.required} more</li>`;
+              });
+              coursesHTML += '</ul>';
+              
+              coursesDiv.innerHTML = coursesHTML;
+              alertDiv.style.display = 'block';
+          }
+      })
+      .catch(error => console.error('Error checking attendance alert:', error));
 </script>
 {% endblock %}
+

@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-shell reveal-up mb-4">
+    <div class="dashboard-hero">
+        <span class="hero-kicker">Timetable Management</span>
+        <h3 class="mb-1">Weekly Class Schedule</h3>
+        <p class="mb-2" style="opacity:.9;">Create and manage your weekly timetable. Sessions will be auto-generated based on this schedule.</p>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-light btn-sm">← Back to Dashboard</a>
+            <a href="#create-timetable" class="btn btn-light btn-sm">➕ Add Entry</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    {# Create Timetable Entry Form #}
+    <div class="col-lg-4">
+        <div class="glass-card h-100" id="create-timetable">
+            <div class="section-head">
+                <h5>➕ Add Timetable Entry</h5>
+            </div>
+            
+            {% if teacher_assignments %}
+            <form method="POST" action="{{ url_for('teacher_create_timetable') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                
+                <div class="mb-3">
+                    <label class="form-label small">Course & Section</label>
+                    <select name="course_id" class="form-select form-select-sm" required id="timetable-course-select">
+                        <option value="">Select Course</option>
+                        {% for assignment in teacher_assignments %}
+                        <option value="{{ assignment.course_id }}" data-section="{{ assignment.section }}">
+                            {{ assignment.course.code }} - {{ assignment.course.title }} (Sec {{ assignment.section }})
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <input type="hidden" name="section" id="timetable-section-input">
+                
+                <div class="mb-3">
+                    <label class="form-label small">Day of Week</label>
+                    <select name="day_of_week" class="form-select form-select-sm" required>
+                        <option value="">Select Day</option>
+                        <option value="0">Monday</option>
+                        <option value="1">Tuesday</option>
+                        <option value="2">Wednesday</option>
+                        <option value="3">Thursday</option>
+                        <option value="4">Friday</option>
+                        <option value="5">Saturday</option>
+                        <option value="6">Sunday</option>
+                    </select>
+                </div>
+                
+                <div class="row g-2 mb-3">
+                    <div class="col-6">
+                        <label class="form-label small">Start Time</label>
+                        <input type="time" name="start_time" class="form-control form-control-sm" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">End Time</label>
+                        <input type="time" name="end_time" class="form-control form-control-sm" required>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label small">Room / Lab</label>
+                    <input type="text" name="room" class="form-control form-control-sm" required placeholder="e.g., Lab 101">
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label small">Class Type</label>
+                    <select name="class_type" class="form-select form-select-sm">
+                        <option value="Lecture">Lecture</option>
+                        <option value="Lab">Lab</option>
+                        <option value="Tutorial">Tutorial</option>
+                        <option value="Practical">Practical</option>
+                    </select>
+                </div>
+                
+                <button type="submit" class="btn btn-primary btn-sm w-100">Add to Timetable</button>
+            </form>
+            {% else %}
+            <div class="alert alert-warning mb-0">
+                <strong>No courses assigned.</strong><br>
+                Contact admin to assign courses to you.
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    {# Timetable View #}
+    <div class="col-lg-8">
+        <div class="glass-card">
+            <div class="section-head">
+                <h5>📅 Your Weekly Timetable</h5>
+                <small class="text-muted">{{ timetable_entries|length }} entries</small>
+            </div>
+            
+            {% if timetable_entries %}
+            <div class="table-responsive">
+                <table class="table table-hover table-modern align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Day</th>
+                            <th>Time</th>
+                            <th>Course</th>
+                            <th>Section</th>
+                            <th>Room</th>
+                            <th>Type</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entry in timetable_entries %}
+                        <tr>
+                            <td class="fw-semibold">{{ entry.get_day_name() }}</td>
+                            <td class="small">
+                                {{ entry.start_time.strftime('%I:%M %p') }} - {{ entry.end_time.strftime('%I:%M %p') }}
+                                <br>
+                                <span class="text-muted">({{ entry.duration_minutes() }} min)</span>
+                            </td>
+                            <td>
+                                <div class="fw-semibold">{{ entry.course.code }}</div>
+                                <div class="small text-muted">{{ entry.course.title }}</div>
+                            </td>
+                            <td><span class="badge bg-info text-dark">{{ entry.section }}</span></td>
+                            <td>{{ entry.room }}</td>
+                            <td><span class="badge bg-secondary">{{ entry.class_type }}</span></td>
+                            <td class="text-center">
+                                <form method="POST" action="{{ url_for('teacher_delete_timetable', timetable_id=entry.id) }}" style="display: inline;"
+                                      onsubmit="return confirm('Delete this timetable entry?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button class="btn btn-sm btn-outline-danger" title="Delete">🗑</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="alert alert-info mt-3 mb-0">
+                <strong>📌 Note:</strong> Sessions will be automatically created 15 minutes before each class based on this timetable.
+            </div>
+            {% else %}
+            <div class="alert alert-secondary mb-0">
+                <strong>No timetable entries yet.</strong><br>
+                Add your weekly schedule using the form on the left.
+            </div>
+            {% endif %}
+        </div>
+        
+        {# Timetable Calendar View #}
+        {% if timetable_entries %}
+        <div class="glass-card mt-4">
+            <div class="section-head">
+                <h5>📊 Week at a Glance</h5>
+            </div>
+            
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 100px;">Time</th>
+                            <th>Monday</th>
+                            <th>Tuesday</th>
+                            <th>Wednesday</th>
+                            <th>Thursday</th>
+                            <th>Friday</th>
+                            <th>Saturday</th>
+                            <th>Sunday</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% set time_slots = [] %}
+                        {% for entry in timetable_entries %}
+                            {% if entry.start_time not in time_slots %}
+                                {% set _ = time_slots.append(entry.start_time) %}
+                            {% endif %}
+                        {% endfor %}
+                        {% set time_slots = time_slots|sort %}
+                        
+                        {% for time_slot in time_slots %}
+                        <tr>
+                            <td class="fw-semibold small">{{ time_slot.strftime('%I:%M %p') }}</td>
+                            {% for day in range(7) %}
+                            <td>
+                                {% set day_entries = timetable_entries|selectattr('day_of_week', 'equalto', day)|selectattr('start_time', 'equalto', time_slot)|list %}
+                                {% if day_entries %}
+                                    {% for entry in day_entries %}
+                                    <div class="p-2 mb-1 rounded" style="background: #e3f2fd; border-left: 3px solid #2196f3;">
+                                        <div class="fw-semibold small">{{ entry.course.code }}</div>
+                                        <div class="small text-muted">Sec {{ entry.section }}</div>
+                                        <div class="small">{{ entry.room }}</div>
+                                    </div>
+                                    {% endfor %}
+                                {% else %}
+                                <span class="text-muted small">—</span>
+                                {% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    // Auto-populate section when course is selected
+    const courseSelect = document.getElementById('timetable-course-select');
+    const sectionInput = document.getElementById('timetable-section-input');
+    
+    if (courseSelect && sectionInput) {
+        courseSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            const section = selectedOption.getAttribute('data-section');
+            sectionInput.value = section || '';
+        });
+    }
+</script>
+{% endblock %}

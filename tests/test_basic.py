@@ -76,7 +76,14 @@ def _create_kiosk_fixture():
         db.session.add_all([teacher, student])
         db.session.commit()
 
-        course = Course(code="CSE101", title="Secure Systems", section="A", teacher_id=teacher.id)
+        course = Course(
+            code="CSE101", 
+            title="Secure Systems", 
+            teacher_id=teacher.id,
+            department="Computer Science",
+            academic_year="2025-26",
+            semester="1"
+        )
         db.session.add(course)
         db.session.commit()
 
@@ -86,6 +93,7 @@ def _create_kiosk_fixture():
             course_code=course.code,
             room="Lab 1",
             course_id=course.id,
+            section="A",
             teacher_id=teacher.id,
             starts_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=5),
             ends_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10),
@@ -195,6 +203,10 @@ def test_public_registration_rejects_teacher_role():
             "role": "teacher",
             "department": "Computer Science",
             "email": email,
+            "phone": "1234567890",
+            "college_id": "TEST123",
+            "year": "1",
+            "semester": "1",
             "password": "ValidPass1",
             "consent": "yes",
         },

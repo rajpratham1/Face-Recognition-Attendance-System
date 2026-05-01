@@ -98,7 +98,7 @@
     <div class="section-head">
         <div>
             <p class="eyebrow mb-1">User Manual</p>
-            <h3 class="mb-0">Role-Based Quick Guide</h3>
+            <h3 class="mb-0">Complete Role-Based Guide</h3>
         </div>
         <a href="{{ url_for('register') }}" class="btn btn-custom">Get Started</a>
     </div>
@@ -106,50 +106,93 @@
     <div class="row g-3 mb-4">
         <div class="col-lg-4">
             <div class="manual-quick h-100">
-                <h6 class="mb-2">Student Flow</h6>
-                <p class="small text-muted mb-2">Use this path for fastest attendance marking.</p>
+                <h6 class="mb-2"><i class="fas fa-user-graduate me-2"></i>Student Portal</h6>
+                <p class="small text-muted mb-2">Complete workflow for students to mark attendance.</p>
                 <ol class="small mb-0">
-                    <li>Register as student and scan face.</li>
-                    <li>Wait for teacher to open live session.</li>
-                    <li>Open Mark Attendance and submit.</li>
+                    <li>Register with student role and verify email.</li>
+                    <li>Complete one-time face registration (128D descriptor, no photos stored).</li>
+                    <li>View active class sessions in real-time on dashboard.</li>
+                    <li>Mark attendance with face verification + GPS location check.</li>
+                    <li>Pass liveness detection (blink, head movement, texture analysis).</li>
+                    <li>View session history and daily attendance records.</li>
+                    <li>Check attendance calendar for past records.</li>
                 </ol>
             </div>
         </div>
         <div class="col-lg-4">
             <div class="manual-quick h-100">
-                <h6 class="mb-2">Teacher Flow</h6>
-                <p class="small text-muted mb-2">Manage attendance windows in real time.</p>
+                <h6 class="mb-2"><i class="fas fa-chalkboard-teacher me-2"></i>Teacher Dashboard</h6>
+                <p class="small text-muted mb-2">Manage courses and track attendance in real-time.</p>
                 <ol class="small mb-0">
-                    <li>Create course and enroll students.</li>
-                    <li>Start class session with duration.</li>
-                    <li>Close session and review report.</li>
+                    <li>Register with teacher role and complete face setup.</li>
+                    <li>Create new courses with course code and name.</li>
+                    <li>Enroll students securely via email addresses.</li>
+                    <li>Start live class sessions with custom duration.</li>
+                    <li>Monitor real-time attendance counts during session.</li>
+                    <li>Close sessions manually or let them auto-close.</li>
+                    <li>View session rosters with marked/absent students.</li>
+                    <li>Export attendance reports as CSV files.</li>
+                    <li>Access course timetable and session history.</li>
                 </ol>
             </div>
         </div>
         <div class="col-lg-4">
             <div class="manual-quick h-100">
-                <h6 class="mb-2">Admin Flow</h6>
-                <p class="small text-muted mb-2">Oversee users, compliance, and operations.</p>
+                <h6 class="mb-2"><i class="fas fa-user-shield me-2"></i>Admin Panel</h6>
+                <p class="small text-muted mb-2">System-wide oversight and user management.</p>
                 <ol class="small mb-0">
-                    <li>Review attendance and user states.</li>
-                    <li>Clear face data if re-scan needed.</li>
-                    <li>Use print/export for records.</li>
+                    <li>Access comprehensive system dashboard.</li>
+                    <li>View all users with role-based filtering.</li>
+                    <li>Edit user profiles and update information.</li>
+                    <li>Change user roles (student/teacher/admin).</li>
+                    <li>Clear face data for re-registration if needed.</li>
+                    <li>Delete users and manage accounts.</li>
+                    <li>Review system-wide attendance logs.</li>
+                    <li>Monitor failed attendance attempts and audit logs.</li>
+                    <li>Export reports for compliance and records.</li>
                 </ol>
             </div>
         </div>
     </div>
 
-    <div class="row g-3">
-        <div class="col-lg-6">
-            <div class="alert alert-warning small mb-0 h-100">
-                <strong>Biometric Notice:</strong> Face descriptors are used only for attendance verification and
-                protected audit logging.
+    <div class="row g-3 mb-3">
+        <div class="col-lg-12">
+            <div class="alert alert-primary small mb-0">
+                <h6 class="mb-2"><i class="fas fa-shield-alt me-2"></i>Security Features</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <ul class="small mb-0">
+                            <li><strong>Liveness Detection:</strong> Blink detection, head movement tracking, and texture analysis prevent photo/video spoofing.</li>
+                            <li><strong>Strict Geofencing:</strong> GPS coordinates must fall within campus radius (configurable, default 100m).</li>
+                            <li><strong>Single-Face Validation:</strong> AI ensures only one face is detected during attendance marking.</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <ul class="small mb-0">
+                            <li><strong>Edge Biometrics:</strong> Face descriptors cannot be reverse-engineered into photos.</li>
+                            <li><strong>Audit Logging:</strong> Every attempt logged with IP, user-agent, and device hash.</li>
+                            <li><strong>API Defense:</strong> Scrypt password hashing, CSRF tokens, and rate limiting.</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="col-lg-6">
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-4">
+            <div class="alert alert-warning small mb-0 h-100">
+                <strong><i class="fas fa-fingerprint me-1"></i> Privacy Notice:</strong> Face descriptors (128-dimensional vectors) are used only for attendance verification. No actual photos are stored on the server.
+            </div>
+        </div>
+        <div class="col-lg-4">
             <div class="alert alert-info small mb-0 h-100">
-                <strong>Setup Tip:</strong> Keep Firebase keys in .env and apply rules/index files from the deployment
-                folder.
+                <strong><i class="fas fa-map-marker-alt me-1"></i> Geofence Setup:</strong> Configure INVERTIS_LAT, INVERTIS_LNG, and ALLOWED_RADIUS_METERS in .env file. Set GEOFENCE_ENFORCED=1 for production.
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="alert alert-success small mb-0 h-100">
+                <strong><i class="fas fa-cog me-1"></i> Quick Tip:</strong> Use the contact form in footer for support. Mathematical CAPTCHA protects against spam. Check legal pages for policies.
             </div>
         </div>
     </div>

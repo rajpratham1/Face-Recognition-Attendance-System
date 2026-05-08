@@ -35,7 +35,9 @@ from firebase_service import (
     create_custom_token,
     update_session_status,
     delete_firebase_user,
-    update_firebase_user
+    update_firebase_user,
+    get_user_from_firebase,
+    sync_firebase_to_sqlite
 )
 from email_service import send_attendance_email, send_password_reset_email
 from models import (
@@ -2006,35 +2008,52 @@ def login():
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         
-        # First check in SQLite database
-        user = User.query.filter_by(email=email).first()
-
-        if user and check_password_hash(user.password_hash, password):
-            # Verify with Firebase Authentication (optional check)
-            firebase_uid = verify_firebase_user(app, email, password)
-            if firebase_uid:
-                app.logger.info(f"✅ Firebase Auth verified: {email}")
-            else:
-                app.logger.warning(f"⚠️ Firebase Auth verification skipped or failed: {email}")
+        # Try to get user from Firebase first (primary source)
+        from firebase_service import get_user_from_firebase, sync_firebase_to_sqlite
+        firebase_user = get_user_from_firebase(app, email)
+        
+        if firebase_user:
+            # Sync Firebase user to SQLite
+            user = sync_firebase_to_sqlite(app, firebase_user, db.session, User)
             
-            # Login user (SQLite-based session)
+            if user and check_password_hash(user.password_hash, password):
+                # Login user
+                login_user(user, remember=True)
+                
+                # Update last login timestamp
+                user.last_login = now_utc_naive()
+                db.session.commit()
+                
+                # Sync last login to Firebase
+                try:
+                    from firebase_service import db as firebase_db
+                    if firebase_db:
+                        ref = firebase_db.reference(f"users/{user.id}/last_login")
+                        ref.set(user.last_login.isoformat())
+                except Exception:
+                    pass
+                
+                app.logger.info(f"✅ Login successful (Firebase): {email}")
+                flash("Login successful!", "success")
+                return redirect(url_for("dashboard"))
+        
+        # Fallback: Check SQLite if Firebase fails or user not in Firebase
+        user = User.query.filter_by(email=email).first()
+        if user and check_password_hash(user.password_hash, password):
             login_user(user, remember=True)
             
             # Update last login timestamp
             user.last_login = now_utc_naive()
             db.session.commit()
             
-            # Create custom Firebase token for client-side use (optional)
-            custom_token = create_custom_token(app, user.id)
-            if custom_token:
-                # Store token in session for future use
-                from flask import session
-                session['firebase_token'] = custom_token
-                app.logger.info(f"Custom Firebase token created for: {email}")
+            # Sync to Firebase
+            sync_user_registration(app, user)
             
+            app.logger.info(f"✅ Login successful (SQLite fallback): {email}")
             flash("Login successful!", "success")
             return redirect(url_for("dashboard"))
         
+        app.logger.warning(f"❌ Login failed: {email}")
         flash("Invalid email or password. Please try again.", "danger")
         return redirect(url_for("login"))
 

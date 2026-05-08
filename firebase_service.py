@@ -100,6 +100,7 @@ def sync_user_registration(app, user):
             'id': user.id,
             'name': user.name,
             'email': user.email,
+            'password_hash': user.password_hash,  # Store password hash for login
             'role': user.role,
             'department': user.department or '',
             'section': user.section or '',
@@ -107,6 +108,7 @@ def sync_user_registration(app, user):
             'semester': user.semester or '',
             'college_id': user.college_id or '',
             'face_registered': user.face_registered,
+            'face_encoding': user.face_encoding,  # Store face encoding
             'is_active': user.is_active,
             'registered_at': user.registered_at.isoformat() if user.registered_at else None,
             'synced_at': datetime.now(timezone.utc).isoformat()

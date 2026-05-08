@@ -202,7 +202,7 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h6 class="card-title mb-3">➕ Create New Course</h6>
-                    <form method="POST" action="{{ url_for('admin_create_course') }}">
+                    <form method="POST" action="{{ url_for('create_course') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-2">
                             <input type="text" name="code" class="form-control form-control-sm" placeholder="Course Code (e.g., CS301)" required maxlength="40">

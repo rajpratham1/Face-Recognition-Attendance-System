@@ -232,11 +232,12 @@
             </div>
         </div>
         
-        {# Assign Teacher Form #}
+        {# Assign Teacher Form - Temporarily Disabled #}
         <div class="col-md-6">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h6 class="card-title mb-3">👨‍🏫 Assign Teacher to Section</h6>
+                    <p class="text-muted small">Feature temporarily disabled for maintenance.</p>
                     <form method="POST" action="{{ url_for('admin_assign_teacher') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-2">
@@ -263,10 +264,11 @@
         </div>
     </div>
     
-    {# Bulk Enrollment #}
+    {# Bulk Enrollment - Temporarily Disabled #}
     <div class="card border-0 shadow-sm mb-3">
         <div class="card-body">
             <h6 class="card-title mb-3">📤 Bulk Student Enrollment (CSV Upload)</h6>
+            <p class="text-muted small">Feature temporarily disabled for maintenance.</p>
             <form method="POST" action="{{ url_for('admin_bulk_enroll') }}" enctype="multipart/form-data">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="row g-2 align-items-end">

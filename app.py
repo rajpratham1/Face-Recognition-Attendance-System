@@ -22,7 +22,15 @@ from sqlalchemy.exc import IntegrityError
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from config import Config
-from firebase_service import init_firebase, sync_attendance_attempt, sync_session_attendance
+from firebase_service import (
+    init_firebase, 
+    sync_attendance_attempt, 
+    sync_session_attendance,
+    sync_user_registration,
+    sync_course_creation,
+    sync_session_creation,
+    sync_enrollment
+)
 from email_service import send_attendance_email, send_password_reset_email
 from models import (
     Attendance,
@@ -808,6 +816,10 @@ def register():
             )
             db.session.add(new_user)
             db.session.commit()
+            
+            # Sync to Firebase
+            sync_user_registration(app, new_user)
+            
             app.logger.info("New user registered: email=%s, role=%s", email, role)
         except Exception as e:
             db.session.rollback()
@@ -1021,6 +1033,10 @@ def create_course():
     course = Course(code=code, title=title, section=section, teacher_id=current_user.id)
     db.session.add(course)
     db.session.commit()
+    
+    # Sync to Firebase
+    sync_course_creation(app, course)
+    
     flash("Course created successfully.", "success")
     return redirect(url_for("dashboard"))
 
@@ -1045,8 +1061,13 @@ def enroll_student(course_id):
         flash("Student already enrolled in this course.", "info")
         return redirect(url_for("dashboard"))
 
-    db.session.add(Enrollment(course_id=course.id, student_id=student.id))
+    enrollment = Enrollment(course_id=course.id, student_id=student.id)
+    db.session.add(enrollment)
     db.session.commit()
+    
+    # Sync to Firebase
+    sync_enrollment(app, enrollment)
+    
     flash("Student enrolled successfully.", "success")
     return redirect(url_for("dashboard"))
 
@@ -1112,6 +1133,10 @@ def create_session():
     )
     db.session.add(new_session)
     db.session.commit()
+    
+    # Sync to Firebase
+    sync_session_creation(app, new_session)
+    
     flash(
         f"Class session created. Students must be within {app.config['SESSION_LOCATION_RADIUS_METERS']} meters of the classroom to mark attendance.",
         "success",

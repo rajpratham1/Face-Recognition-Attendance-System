@@ -128,15 +128,42 @@ def sync_course_creation(app, course):
             'id': course.id,
             'code': course.code,
             'title': course.title,
+            'department': getattr(course, 'department', '') or '',
+            'academic_year': getattr(course, 'academic_year', '') or '',
+            'semester': getattr(course, 'semester', '') or '',
+            'credits': getattr(course, 'credits', 3),
             'section': course.section or '',
             'teacher_id': course.teacher_id,
+            'created_by_admin_id': getattr(course, 'created_by_admin_id', None),
             'is_active': course.is_active,
+            'updated_at': course.updated_at.isoformat() if getattr(course, 'updated_at', None) else None,
             'created_at': course.created_at.isoformat() if course.created_at else None,
             'synced_at': datetime.now(timezone.utc).isoformat()
         })
         logger.info(f"✅ Course {course.id} synced to Firebase")
     except Exception as exc:
         logger.warning(f"Firebase sync_course_creation failed: {exc}")
+
+
+def sync_teacher_assignment(app, assignment):
+    """Sync teacher assignment to Firebase"""
+    if not firebase_enabled(app):
+        return
+    try:
+        ref = db.reference(f"teacher_assignments/{assignment.id}")
+        ref.set({
+            'id': assignment.id,
+            'teacher_id': assignment.teacher_id,
+            'course_id': assignment.course_id,
+            'section': assignment.section or '',
+            'assigned_by_admin_id': assignment.assigned_by_admin_id,
+            'assigned_at': assignment.assigned_at.isoformat() if assignment.assigned_at else None,
+            'is_active': assignment.is_active,
+            'synced_at': datetime.now(timezone.utc).isoformat()
+        })
+        logger.info(f"✅ Teacher assignment {assignment.id} synced to Firebase")
+    except Exception as exc:
+        logger.warning(f"Firebase sync_teacher_assignment failed: {exc}")
 
 
 def sync_session_creation(app, session):
@@ -151,12 +178,14 @@ def sync_session_creation(app, session):
             'course_code': session.course_code,
             'title': session.title,
             'room': session.room or '',
+            'section': getattr(session, 'section', '') or '',
             'teacher_id': session.teacher_id,
             'is_active': session.is_active,
             'starts_at': session.starts_at.isoformat() if session.starts_at else None,
             'ends_at': session.ends_at.isoformat() if session.ends_at else None,
             'location_lat': session.location_lat,
             'location_lng': session.location_lng,
+            'location_radius_meters': getattr(session, 'location_radius_meters', None),
             'created_at': session.created_at.isoformat() if session.created_at else None,
             'synced_at': datetime.now(timezone.utc).isoformat()
         })
@@ -418,6 +447,16 @@ def get_user_from_firebase(app, email):
         return None
     except Exception as exc:
         logger.error(f"Firebase get_user_from_firebase failed: {exc}")
+        try:
+            users = db.reference('users').get() or {}
+            for user_id, user_data in users.items():
+                user_data = user_data or {}
+                if user_data.get('email', '').strip().lower() == email.strip().lower():
+                    user_data['id'] = int(user_id)
+                    logger.info("Firebase get_user_from_firebase fallback scan succeeded for %s", email)
+                    return user_data
+        except Exception as fallback_exc:
+            logger.error(f"Firebase get_user_from_firebase fallback failed: {fallback_exc}")
         return None
 
 
@@ -465,4 +504,157 @@ def sync_firebase_to_sqlite(app, user_data, db_session, User):
         db_session.rollback()
         logger.error(f"Firebase sync_firebase_to_sqlite failed: {exc}")
         return None
+
+
+def sync_reference_data_to_sqlite(app, db_session, User, Course, TeacherAssignment, Enrollment, ClassSession):
+    """Hydrate SQLite from Firebase for ephemeral deployments like Render."""
+    if not firebase_enabled(app):
+        return
+
+    def _parse_dt(value):
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+        except Exception:
+            return None
+
+    try:
+        users_data = db.reference('users').get() or {}
+        for user_id, payload in users_data.items():
+            payload = payload or {}
+            existing = db_session.get(User, int(user_id))
+            if not existing:
+                existing = User(
+                    id=int(user_id),
+                    name=payload.get('name', 'Unknown'),
+                    email=payload.get('email', f'{user_id}@invalid.local'),
+                    department=payload.get('department', '') or 'General',
+                    password_hash=payload.get('password_hash', ''),
+                )
+                db_session.add(existing)
+            existing.name = payload.get('name', existing.name)
+            existing.email = payload.get('email', existing.email)
+            if payload.get('password_hash'):
+                existing.password_hash = payload.get('password_hash')
+            existing.role = payload.get('role', existing.role)
+            existing.department = payload.get('department', existing.department)
+            existing.college_id = payload.get('college_id', existing.college_id)
+            existing.section = payload.get('section', existing.section)
+            existing.year = payload.get('year', existing.year)
+            existing.semester = payload.get('semester', existing.semester)
+            existing.face_registered = payload.get('face_registered', existing.face_registered)
+            if payload.get('face_encoding'):
+                existing.face_encoding = payload.get('face_encoding')
+            existing.is_active = payload.get('is_active', existing.is_active)
+
+        courses_data = db.reference('courses').get() or {}
+        for course_id, payload in courses_data.items():
+            payload = payload or {}
+            existing = db_session.get(Course, int(course_id))
+            if not existing:
+                existing = Course(
+                    id=int(course_id),
+                    code=payload.get('code', f'COURSE-{course_id}'),
+                    title=payload.get('title', 'Untitled Course'),
+                    department=payload.get('department', 'General'),
+                    academic_year=payload.get('academic_year', 'N/A'),
+                    semester=payload.get('semester', 'N/A'),
+                )
+                db_session.add(existing)
+            existing.code = payload.get('code', existing.code)
+            existing.title = payload.get('title', existing.title)
+            existing.department = payload.get('department', existing.department)
+            existing.academic_year = payload.get('academic_year', existing.academic_year)
+            existing.semester = payload.get('semester', existing.semester)
+            existing.credits = payload.get('credits', existing.credits or 3)
+            existing.teacher_id = payload.get('teacher_id', existing.teacher_id)
+            existing.created_by_admin_id = payload.get('created_by_admin_id', getattr(existing, 'created_by_admin_id', None))
+            existing.is_active = payload.get('is_active', existing.is_active)
+            created_at = _parse_dt(payload.get('created_at'))
+            if created_at:
+                existing.created_at = created_at
+
+        assignments_data = db.reference('teacher_assignments').get() or {}
+        for assignment_id, payload in assignments_data.items():
+            payload = payload or {}
+            existing = db_session.get(TeacherAssignment, int(assignment_id))
+            if not existing:
+                existing = TeacherAssignment(
+                    id=int(assignment_id),
+                    teacher_id=payload.get('teacher_id'),
+                    course_id=payload.get('course_id'),
+                    section=payload.get('section', ''),
+                )
+                db_session.add(existing)
+            existing.teacher_id = payload.get('teacher_id', existing.teacher_id)
+            existing.course_id = payload.get('course_id', existing.course_id)
+            existing.section = payload.get('section', existing.section)
+            existing.assigned_by_admin_id = payload.get('assigned_by_admin_id', existing.assigned_by_admin_id)
+            existing.is_active = payload.get('is_active', existing.is_active)
+            assigned_at = _parse_dt(payload.get('assigned_at'))
+            if assigned_at:
+                existing.assigned_at = assigned_at
+
+        enrollments_data = db.reference('enrollments').get() or {}
+        for student_id, course_map in enrollments_data.items():
+            for course_id, payload in (course_map or {}).items():
+                payload = payload or {}
+                existing = None
+                if payload.get('enrollment_id'):
+                    existing = db_session.get(Enrollment, int(payload['enrollment_id']))
+                if not existing:
+                    existing = Enrollment.query.filter_by(student_id=int(student_id), course_id=int(course_id)).first()
+                if not existing:
+                    existing = Enrollment(
+                        id=int(payload['enrollment_id']) if payload.get('enrollment_id') else None,
+                        student_id=int(student_id),
+                        course_id=int(course_id),
+                    )
+                    db_session.add(existing)
+                existing.student_id = int(student_id)
+                existing.course_id = int(course_id)
+                existing.is_active = payload.get('is_active', existing.is_active)
+                enrolled_at = _parse_dt(payload.get('enrolled_at'))
+                if enrolled_at:
+                    existing.enrolled_at = enrolled_at
+
+        sessions_data = db.reference('sessions').get() or {}
+        for session_id, payload in sessions_data.items():
+            payload = payload or {}
+            existing = db_session.get(ClassSession, int(session_id))
+            if not existing:
+                existing = ClassSession(
+                    id=int(session_id),
+                    title=payload.get('title', 'Untitled Session'),
+                    course_code=payload.get('course_code', ''),
+                    room=payload.get('room', ''),
+                    starts_at=_parse_dt(payload.get('starts_at')) or datetime.now(timezone.utc),
+                    ends_at=_parse_dt(payload.get('ends_at')) or datetime.now(timezone.utc),
+                    teacher_id=payload.get('teacher_id'),
+                )
+                db_session.add(existing)
+            existing.course_id = payload.get('course_id', existing.course_id)
+            existing.course_code = payload.get('course_code', existing.course_code)
+            existing.title = payload.get('title', existing.title)
+            existing.room = payload.get('room', existing.room)
+            existing.section = payload.get('section', getattr(existing, 'section', None))
+            existing.teacher_id = payload.get('teacher_id', existing.teacher_id)
+            existing.is_active = payload.get('is_active', existing.is_active)
+            starts_at = _parse_dt(payload.get('starts_at'))
+            ends_at = _parse_dt(payload.get('ends_at'))
+            if starts_at:
+                existing.starts_at = starts_at
+            if ends_at:
+                existing.ends_at = ends_at
+            existing.location_lat = payload.get('location_lat', existing.location_lat)
+            existing.location_lng = payload.get('location_lng', existing.location_lng)
+            if payload.get('location_radius_meters') is not None:
+                existing.location_radius_meters = payload.get('location_radius_meters')
+
+        db_session.commit()
+        logger.info("✅ Firebase reference data synced to SQLite")
+    except Exception as exc:
+        db_session.rollback()
+        logger.error(f"Firebase sync_reference_data_to_sqlite failed: {exc}")
 

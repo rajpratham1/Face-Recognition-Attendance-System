@@ -2,12 +2,18 @@ import argparse
 import os
 import shutil
 from datetime import datetime
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_DB = BASE_DIR / "instance" / "attendance.db"
+DEFAULT_OUT = BASE_DIR / "backups"
 
 
 def main():
     parser = argparse.ArgumentParser(description="Backup SQLite attendance database")
-    parser.add_argument("--db", default=os.path.join("instance", "attendance.db"), help="Path to source DB")
-    parser.add_argument("--out", default="backups", help="Backup output directory")
+    parser.add_argument("--db", default=str(DEFAULT_DB), help="Path to source DB")
+    parser.add_argument("--out", default=str(DEFAULT_OUT), help="Backup output directory")
     args = parser.parse_args()
 
     os.makedirs(args.out, exist_ok=True)

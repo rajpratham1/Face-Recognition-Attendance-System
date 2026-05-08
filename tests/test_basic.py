@@ -11,6 +11,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app as attendance_app
+from config import _resolve_sqlite_database_uri
 
 app = attendance_app.app
 db = attendance_app.db
@@ -128,6 +129,13 @@ def test_security_cookie_flags_set():
     assert app.config["SESSION_COOKIE_SECURE"] is False
     assert app.config["GEOFENCE_ENFORCED"] is False
     assert app.config["SESSION_LOCATION_RADIUS_METERS"] == 50
+
+
+def test_sqlite_database_uri_stays_inside_project_instance():
+    base_dir = Path(__file__).resolve().parents[1]
+    resolved_uri = _resolve_sqlite_database_uri("sqlite:///attendance.db", base_dir)
+    assert resolved_uri.endswith("/instance/attendance.db")
+    assert resolved_uri.startswith("sqlite:///")
 
 
 def test_teacher_session_roster_requires_login():

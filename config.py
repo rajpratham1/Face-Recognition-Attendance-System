@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -31,15 +32,36 @@ def _env_bool(name, default):
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _resolve_sqlite_database_uri(raw_url, base_dir, filename="attendance.db"):
+    """Normalize SQLite URLs so local databases stay under the project folder."""
+    default_path = base_dir / "instance" / filename
+    if not raw_url or raw_url.strip() == "":
+        return f"sqlite:///{default_path.as_posix()}"
+
+    if not raw_url.startswith("sqlite:///"):
+        return raw_url
+
+    sqlite_path = Path(raw_url[len("sqlite:///"):])
+    if sqlite_path.is_absolute():
+        return raw_url
+
+    relative_parts = sqlite_path.parts
+    if relative_parts and relative_parts[0].lower() == "instance":
+        relative_parts = relative_parts[1:]
+
+    resolved_path = default_path if not relative_parts else base_dir / "instance" / Path(*relative_parts)
+    return f"sqlite:///{resolved_path.as_posix()}"
+
 class Config:
     APP_NAME = os.environ.get('APP_NAME', 'Face Attendance')
     APP_PROGRAM_NAME = os.environ.get('APP_PROGRAM_NAME', 'Intel Digital Readiness Bootcamp')
     APP_GEOFENCE_LABEL = os.environ.get('APP_GEOFENCE_LABEL', 'authorized attendance zone')
     SECRET_KEY = os.environ.get('SECRET_KEY')
     
-    # Use absolute path for database to avoid confusion with multiple instance folders
-    _basedir = os.path.abspath(os.path.dirname(__file__))
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', f'sqlite:///{os.path.join(_basedir, "instance", "attendance.db")}')
+    # Keep SQLite databases anchored to the project folder so cwd does not change the target.
+    _basedir = Path(__file__).resolve().parent
+    SQLALCHEMY_DATABASE_URI = _resolve_sqlite_database_uri(os.environ.get('DATABASE_URL'), _basedir)
     
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     APP_TIMEZONE = os.environ.get('APP_TIMEZONE', 'Asia/Kolkata')

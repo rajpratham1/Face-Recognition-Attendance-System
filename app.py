@@ -781,9 +781,15 @@ def kiosk_mark():
 @limiter.limit("50 per hour")
 def register():
     """Register a new user account with face recognition setup."""
+    if current_user.is_authenticated:
+        if not current_user.face_registered:
+            return redirect(url_for("register_face"))
+        return redirect(url_for("dashboard"))
+
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
+        phone = request.form.get("phone", "").strip()
         department = request.form.get("department", "").strip()
         college_id = request.form.get("college_id", "").strip()
         section = request.form.get("section", "").strip()
@@ -808,6 +814,10 @@ def register():
         if not department or len(department) < 2:
             flash("Department is required.", "warning")
             return redirect(url_for("register"))
+
+        if not phone or not phone.isdigit() or len(phone) != 10:
+            flash("Please enter a valid 10-digit phone number.", "warning")
+            return redirect(url_for("register"))
         
         # Public registration is student-only.
         if requested_role not in ["", "student"]:
@@ -828,10 +838,14 @@ def register():
         if User.query.filter_by(email=email).first():
             flash("Email already registered.", "danger")
             return redirect(url_for("register"))
+
+        if User.query.filter_by(phone=phone).first():
+            flash("Phone number already registered.", "danger")
+            return redirect(url_for("register"))
         
         # Validate student-specific fields
-        if role == "student" and not (college_id and section and year and semester):
-            flash("Students must provide College ID, Section, Year, and Semester.", "warning")
+        if role == "student" and not (college_id and year and semester):
+            flash("Students must provide College ID, Year, and Semester.", "warning")
             return redirect(url_for("register"))
 
         # Create new user
@@ -839,11 +853,13 @@ def register():
             new_user = User(
                 name=name,
                 email=email,
+                phone=phone,
                 department=department,
                 college_id=college_id if role == "student" else None,
-                section=section if role == "student" else None,
+                section=section.upper() if role == "student" and section else None,
                 year=year if role == "student" else None,
                 semester=semester if role == "student" else None,
+                assignment_status="assigned" if role == "student" and section and year and semester else "pending",
                 role=role,
                 password_hash=generate_password_hash(password, method="scrypt"),
             )
@@ -877,6 +893,9 @@ def register():
 @app.route("/register_face")
 @login_required
 def register_face():
+    if current_user.face_registered:
+        flash("Face registration is already complete.", "info")
+        return redirect(url_for("dashboard"))
     return render_template("register_face.html")
 
 

@@ -79,18 +79,20 @@ class Config:
     RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
     RATELIMIT_HEADERS_ENABLED = True
 
-    # Firebase (optional but recommended for cloud sync/audit)
+    # Firebase Real-time Database (Cloud Sync & Backup)
     FIREBASE_PROJECT_ID = os.environ.get('FIREBASE_PROJECT_ID', '')
     FIREBASE_DATABASE_URL = os.environ.get('FIREBASE_DATABASE_URL', '')
     FIREBASE_SERVICE_ACCOUNT_PATH = os.environ.get('FIREBASE_SERVICE_ACCOUNT_PATH', '')
     FIREBASE_SERVICE_ACCOUNT_JSON = os.environ.get('FIREBASE_SERVICE_ACCOUNT_JSON', '')
+    FIREBASE_PRIVATE_KEY = os.environ.get('FIREBASE_PRIVATE_KEY', '')
+    FIREBASE_CLIENT_EMAIL = os.environ.get('FIREBASE_CLIENT_EMAIL', '')
 
     # Firebase Web SDK config (frontend)
-    FIREBASE_API_KEY = os.environ.get('FIREBASE_API_KEY', '')
-    FIREBASE_AUTH_DOMAIN = os.environ.get('FIREBASE_AUTH_DOMAIN', '')
+    FIREBASE_API_KEY = os.environ.get('VITE_FIREBASE_API_KEY', '')
+    FIREBASE_AUTH_DOMAIN = os.environ.get('VITE_FIREBASE_AUTH_DOMAIN', '')
     FIREBASE_STORAGE_BUCKET = os.environ.get('FIREBASE_STORAGE_BUCKET', '')
     FIREBASE_MESSAGING_SENDER_ID = os.environ.get('FIREBASE_MESSAGING_SENDER_ID', '')
-    FIREBASE_APP_ID = os.environ.get('FIREBASE_APP_ID', '')
+    FIREBASE_APP_ID = os.environ.get('VITE_FIREBASE_APP_ID', '')
 
     # Campus geofence settings (override from environment for local/dev setups)
     INVERTIS_LAT = _env_float('INVERTIS_LAT', 28.325645)

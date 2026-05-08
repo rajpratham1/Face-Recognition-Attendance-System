@@ -2018,7 +2018,11 @@ def login():
                 app.logger.warning(f"⚠️ Firebase Auth verification skipped or failed: {email}")
             
             # Login user (SQLite-based session)
-            login_user(user)
+            login_user(user, remember=True)
+            
+            # Update last login timestamp
+            user.last_login = now_utc_naive()
+            db.session.commit()
             
             # Create custom Firebase token for client-side use (optional)
             custom_token = create_custom_token(app, user.id)

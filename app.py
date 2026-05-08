@@ -47,6 +47,7 @@ from models import (
     Course,
     Enrollment,
     SessionAttendance,
+    TeacherAssignment,
     User,
     db,
 )
@@ -344,12 +345,31 @@ def student_active_sessions(student_id):
 
 
 def teacher_students_query(teacher_id):
+    course_ids = teacher_accessible_course_ids(teacher_id)
+    if not course_ids:
+        return User.query.filter(User.id == -1)
     return (
         User.query.join(Enrollment, Enrollment.student_id == User.id)
-        .join(Course, Course.id == Enrollment.course_id)
-        .filter(Course.teacher_id == teacher_id, User.role == "student")
+        .filter(Enrollment.course_id.in_(course_ids), User.role == "student")
         .distinct()
     )
+
+
+def teacher_accessible_course_ids(teacher_id):
+    owned_ids = [
+        row[0]
+        for row in db.session.query(Course.id).filter(Course.teacher_id == teacher_id).all()
+    ]
+    assigned_ids = [
+        row[0]
+        for row in db.session.query(TeacherAssignment.course_id)
+        .filter(
+            TeacherAssignment.teacher_id == teacher_id,
+            TeacherAssignment.is_active.is_(True),
+        )
+        .all()
+    ]
+    return sorted(set(owned_ids + assigned_ids))
 
 
 def build_session_roster(session):
@@ -1104,6 +1124,7 @@ def create_session():
         return redirect(url_for("dashboard"))
 
     course_id_raw = request.form.get("course_id", "").strip()
+    section = request.form.get("section", "").strip().upper() or None
     room = request.form.get("room", "").strip()
     duration_raw = request.form.get("duration", "15").strip()
     teacher_lat_raw = request.form.get("teacher_lat", "").strip()
@@ -1115,7 +1136,15 @@ def create_session():
         flash("Invalid course selected.", "warning")
         return redirect(url_for("dashboard"))
 
-    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first()
+    teacher_course_ids = teacher_accessible_course_ids(current_user.id)
+    course = (
+        Course.query.filter(
+            Course.id == course_id,
+            Course.id.in_(teacher_course_ids),
+        ).first()
+        if teacher_course_ids
+        else None
+    )
     if not course:
         flash("Course not found for this teacher.", "warning")
         return redirect(url_for("dashboard"))
@@ -1147,6 +1176,7 @@ def create_session():
         course_code=course.code,
         room=room,
         course_id=course.id,
+        section=section,
         starts_at=starts_at,
         ends_at=ends_at,
         teacher_id=current_user.id,
@@ -1546,7 +1576,18 @@ def course_attendance_report(course_id):
         flash("Only teachers can view course reports.", "danger")
         return redirect(url_for("dashboard"))
 
-    course = Course.query.filter_by(id=course_id, teacher_id=current_user.id).first_or_404()
+    teacher_course_ids = teacher_accessible_course_ids(current_user.id)
+    course = (
+        Course.query.filter(
+            Course.id == course_id,
+            Course.id.in_(teacher_course_ids),
+        ).first()
+        if teacher_course_ids
+        else None
+    )
+    if not course:
+        flash("Course not found for this teacher.", "warning")
+        return redirect(url_for("dashboard"))
 
     # All sessions ever held for this course
     all_sessions = ClassSession.query.filter_by(course_id=course.id).all()
@@ -1583,7 +1624,11 @@ def course_attendance_report(course_id):
         course=course,
         report=report,
         total_sessions=total_sessions,
-        teacher_courses=Course.query.filter_by(teacher_id=current_user.id).all(),
+        teacher_courses=(
+            Course.query.filter(Course.id.in_(teacher_course_ids)).all()
+            if teacher_course_ids
+            else []
+        ),
     )
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1620,6 +1665,289 @@ def delete_course(course_id):
     db.session.commit()
     flash(f"Course '{course.code} – {course.title}' deleted.", "info")
     return redirect(url_for("dashboard"))
+# ──────────────────────────────────────────────────────────────────────────────
+
+
+# ── Admin: Course and Assignment Management ───────────────────────────────────
+@app.route("/admin/courses/create", methods=["POST"])
+@login_required
+def admin_create_course():
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+
+    code = request.form.get("code", "").strip().upper()
+    title = request.form.get("title", "").strip()
+    department = request.form.get("department", "").strip().upper()
+    academic_year = request.form.get("academic_year", "").strip()
+    semester = request.form.get("semester", "").strip()
+    credits_raw = request.form.get("credits", "3").strip()
+
+    if not all([code, title, department, academic_year, semester]):
+        flash("All course fields are required.", "warning")
+        return redirect(url_for("dashboard"))
+
+    try:
+        credits = int(credits_raw or "3")
+    except ValueError:
+        credits = 3
+    credits = max(1, min(credits, 10))
+
+    exists = Course.query.filter_by(
+        code=code,
+        department=department,
+        academic_year=academic_year,
+        semester=semester,
+    ).first()
+    if exists:
+        flash("This course already exists for the selected department, year, and semester.", "warning")
+        return redirect(url_for("dashboard"))
+
+    course = Course(
+        code=code,
+        title=title,
+        department=department,
+        academic_year=academic_year,
+        semester=semester,
+        credits=credits,
+        created_by_admin_id=current_user.id,
+        is_active=True,
+    )
+    db.session.add(course)
+    db.session.commit()
+
+    sync_course_creation(app, course)
+
+    flash(f"Course '{course.code} - {course.title}' created successfully.", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/assign_teacher", methods=["POST"])
+@login_required
+def admin_assign_teacher():
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+
+    teacher_id = request.form.get("teacher_id", type=int)
+    course_id = request.form.get("course_id", type=int)
+    section = request.form.get("section", "").strip().upper()
+
+    if not teacher_id or not course_id or not section:
+        flash("Teacher, course, and section are required.", "warning")
+        return redirect(url_for("dashboard"))
+
+    teacher = User.query.filter_by(id=teacher_id, role="teacher").first()
+    course = db.session.get(Course, course_id)
+    if not teacher or not course:
+        flash("Teacher or course not found.", "warning")
+        return redirect(url_for("dashboard"))
+
+    exists = TeacherAssignment.query.filter_by(
+        teacher_id=teacher_id,
+        course_id=course_id,
+        section=section,
+        is_active=True,
+    ).first()
+    if exists:
+        flash("This teacher is already assigned to that course section.", "info")
+        return redirect(url_for("dashboard"))
+
+    assignment = TeacherAssignment(
+        teacher_id=teacher_id,
+        course_id=course_id,
+        section=section,
+        assigned_by_admin_id=current_user.id,
+        is_active=True,
+    )
+    db.session.add(assignment)
+    db.session.commit()
+
+    flash(
+        f"Assigned {teacher.name} to {course.code} - {course.title} (Section {section}).",
+        "success",
+    )
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/enroll_student", methods=["POST"])
+@login_required
+def admin_enroll_student():
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+
+    student_id = request.form.get("student_id", type=int)
+    course_id = request.form.get("course_id", type=int)
+    section = request.form.get("section", "").strip().upper()
+
+    student = User.query.filter_by(id=student_id, role="student").first()
+    course = db.session.get(Course, course_id) if course_id else None
+    if not student or not course or not section:
+        flash("Student, course, and section are required.", "warning")
+        return redirect(url_for("dashboard"))
+
+    assignment = TeacherAssignment.query.filter_by(
+        course_id=course.id,
+        section=section,
+        is_active=True,
+    ).first()
+    if not assignment:
+        flash("Assign a teacher to this course section before enrolling students.", "warning")
+        return redirect(url_for("dashboard"))
+
+    if student.section and student.section.upper() != section:
+        flash(
+            f"Student is currently in Section {student.section}. Update the section first or choose the matching course section.",
+            "warning",
+        )
+        return redirect(url_for("dashboard"))
+
+    existing = Enrollment.query.filter_by(course_id=course.id, student_id=student.id).first()
+    if existing:
+        flash("Student is already enrolled in this course.", "info")
+        return redirect(url_for("dashboard"))
+
+    enrollment = Enrollment(course_id=course.id, student_id=student.id, is_active=True)
+    db.session.add(enrollment)
+    db.session.commit()
+
+    sync_enrollment(app, enrollment)
+
+    flash(f"Enrolled {student.name} in {course.code} Section {section}.", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/admin/students/<int:student_id>/change_section", methods=["POST"])
+@login_required
+def admin_change_student_section(student_id):
+    if current_user.role != "admin":
+        flash("Admins only.", "danger")
+        return redirect(url_for("dashboard"))
+
+    student = User.query.filter_by(id=student_id, role="student").first()
+    if not student:
+        flash("Student not found.", "warning")
+        return redirect(url_for("dashboard"))
+
+    section = request.form.get("section", "").strip().upper()
+    year = request.form.get("year", "").strip()
+    semester = request.form.get("semester", "").strip()
+
+    if not section:
+        flash("Section is required.", "warning")
+        return redirect(url_for("dashboard"))
+
+    student.section = section
+    if year:
+        student.year = year
+    if semester:
+        student.semester = semester
+    student.assignment_status = "assigned" if student.section and student.year and student.semester else "pending"
+    db.session.commit()
+
+    sync_user_registration(app, student)
+
+    flash(f"Updated section details for {student.name}.", "success")
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/api/admin/courses")
+@login_required
+def api_admin_courses():
+    if current_user.role != "admin":
+        return jsonify({"courses": []}), 403
+
+    courses = (
+        Course.query.filter(Course.is_active.is_(True))
+        .order_by(Course.department.asc(), Course.code.asc(), Course.academic_year.desc(), Course.semester.desc())
+        .all()
+    )
+    return jsonify(
+        {
+            "courses": [
+                {
+                    "id": course.id,
+                    "code": course.code,
+                    "title": course.title,
+                    "department": course.department,
+                    "academic_year": course.academic_year,
+                    "semester": course.semester,
+                }
+                for course in courses
+            ]
+        }
+    )
+
+
+@app.route("/api/admin/course_sections/<int:course_id>")
+@login_required
+def api_admin_course_sections(course_id):
+    if current_user.role != "admin":
+        return jsonify({"sections": []}), 403
+
+    course = db.session.get(Course, course_id)
+    if not course:
+        return jsonify({"sections": [], "message": "Course not found."}), 404
+
+    assignments = (
+        TeacherAssignment.query.join(User, User.id == TeacherAssignment.teacher_id)
+        .filter(
+            TeacherAssignment.course_id == course_id,
+            TeacherAssignment.is_active.is_(True),
+            User.role == "teacher",
+        )
+        .order_by(TeacherAssignment.section.asc(), User.name.asc())
+        .all()
+    )
+    return jsonify(
+        {
+            "course_code": course.code,
+            "sections": [
+                {
+                    "section": assignment.section,
+                    "teacher_id": assignment.teacher_id,
+                    "teacher_name": assignment.teacher.name if assignment.teacher else "Unknown",
+                }
+                for assignment in assignments
+            ],
+        }
+    )
+
+
+@app.route("/api/admin/dashboard_stats")
+@login_required
+def api_admin_dashboard_stats():
+    if current_user.role != "admin":
+        return jsonify({"success": False, "message": "Admins only."}), 403
+
+    total_students = User.query.filter_by(role="student").count()
+    total_teachers = User.query.filter_by(role="teacher").count()
+    total_courses = Course.query.filter(Course.is_active.is_(True)).count()
+    active_sessions = ClassSession.query.filter(
+        ClassSession.is_active.is_(True),
+        ClassSession.ends_at >= now_utc_naive(),
+    ).count()
+    pending_assignments = User.query.filter_by(role="student", assignment_status="pending").count()
+    today_attendance = Attendance.query.filter_by(date=today_local_date()).count()
+
+    low_attendance_count = 0
+    for student in User.query.filter_by(role="student").all():
+        if student.get_attendance_percentage() < 75:
+            low_attendance_count += 1
+
+    return jsonify(
+        {
+            "success": True,
+            "total_students": total_students,
+            "total_teachers": total_teachers,
+            "total_courses": total_courses,
+            "active_sessions": active_sessions,
+            "pending_assignments": pending_assignments,
+            "today_attendance": today_attendance,
+            "low_attendance_count": low_attendance_count,
+        }
+    )
 # ──────────────────────────────────────────────────────────────────────────────
 
 
@@ -2125,6 +2453,7 @@ def dashboard():
         today = today_local_date()
         recent_dates = [today - timedelta(days=i) for i in range(7)]
         recent_dates.reverse()
+        teacher_course_ids = teacher_accessible_course_ids(current_user.id)
 
         students = teacher_students_query(current_user.id).order_by(User.name.asc()).all()
         student_attendance_map = {}
@@ -2142,7 +2471,16 @@ def dashboard():
                     student_attendance_map[student.id][date.isoformat()] = None
 
         now = now_utc_naive()
-        teacher_courses = Course.query.filter_by(teacher_id=current_user.id).order_by(Course.created_at.desc()).all()
+        teacher_courses = (
+            Course.query.filter(Course.id.in_(teacher_course_ids)).order_by(Course.created_at.desc()).all()
+            if teacher_course_ids
+            else []
+        )
+        teacher_assignments = (
+            TeacherAssignment.query.filter_by(teacher_id=current_user.id, is_active=True)
+            .order_by(TeacherAssignment.assigned_at.desc())
+            .all()
+        )
         teacher_sessions = (
             ClassSession.query.filter_by(teacher_id=current_user.id)
             .order_by(ClassSession.created_at.desc())
@@ -2178,6 +2516,7 @@ def dashboard():
             student_attendance_map=student_attendance_map,
             student_today_count=student_today_count,
             teacher_courses=teacher_courses,
+            teacher_assignments=teacher_assignments,
             course_enrollment_count_map=course_enrollment_count_map,
             teacher_sessions=teacher_sessions,
             active_session_count=active_session_count,

@@ -28,6 +28,7 @@ from firebase_service import (
     sync_session_attendance,
     sync_user_registration,
     sync_course_creation,
+    sync_teacher_assignment,
     sync_session_creation,
     sync_enrollment,
     create_firebase_user,
@@ -37,7 +38,8 @@ from firebase_service import (
     delete_firebase_user,
     update_firebase_user,
     get_user_from_firebase,
-    sync_firebase_to_sqlite
+    sync_firebase_to_sqlite,
+    sync_reference_data_to_sqlite,
 )
 from email_service import send_attendance_email, send_password_reset_email
 from models import (
@@ -1781,6 +1783,7 @@ def admin_assign_teacher():
     )
     db.session.add(assignment)
     db.session.commit()
+    sync_teacher_assignment(app, assignment)
 
     flash(
         f"Assigned {teacher.name} to {course.code} - {course.title} (Section {section}).",
@@ -2175,6 +2178,50 @@ def api_session_counts():
     )
     return jsonify({str(sid): count for sid, count in rows})
 # ──────────────────────────────────────────────────────────────────────────────
+
+
+@app.route("/api/teacher/dashboard_stats")
+@login_required
+def api_teacher_dashboard_stats():
+    if current_user.role != "teacher":
+        return jsonify({"success": False, "message": "Teachers only."}), 403
+
+    teacher_course_ids = teacher_accessible_course_ids(current_user.id)
+    active_sessions = ClassSession.query.filter(
+        ClassSession.teacher_id == current_user.id,
+        ClassSession.is_active.is_(True),
+        ClassSession.ends_at >= now_utc_naive(),
+    ).count()
+    students_count = teacher_students_query(current_user.id).count()
+    return jsonify(
+        {
+            "success": True,
+            "total_courses": len(teacher_course_ids),
+            "total_students": students_count,
+            "active_sessions": active_sessions,
+        }
+    )
+
+
+@app.route("/api/teacher/session/<int:session_id>/stats")
+@login_required
+def api_teacher_session_stats(session_id):
+    if current_user.role != "teacher":
+        return jsonify({"success": False, "message": "Teachers only."}), 403
+
+    session = ClassSession.query.filter_by(id=session_id, teacher_id=current_user.id).first()
+    if not session:
+        return jsonify({"success": False, "message": "Session not found."}), 404
+
+    roster = build_session_roster(session)
+    return jsonify(
+        {
+            "success": True,
+            "marked": roster["counts"].get("marked", 0),
+            "failed": roster["counts"].get("failed", 0),
+            "pending": roster["counts"].get("pending", 0),
+        }
+    )
 
 
 # ── Student: Per-course attendance breakdown API ───────────────────────────────
@@ -2596,6 +2643,7 @@ def dashboard():
     )
 with app.app_context():
     ensure_schema_compatibility()
+    sync_reference_data_to_sqlite(app, db.session, User, Course, TeacherAssignment, Enrollment, ClassSession)
 
     # ── Backfill daily Attendance from existing SessionAttendance records ──
     # Fixes missing daily records for sessions marked before this logic was added.

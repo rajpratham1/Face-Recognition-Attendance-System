@@ -53,7 +53,7 @@ if not app.config.get("SECRET_KEY"):
 
 csrf = CSRFProtect(app)
 db.init_app(app)
-limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["200 per day", "60 per hour"])
+limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["500 per day", "150 per hour"])
 init_firebase(app)
 
 login_manager = LoginManager()
@@ -636,7 +636,7 @@ def kiosk_data(session_id):
 
 @app.route("/api/kiosk_mark", methods=["POST"])
 @login_required
-@limiter.limit("120 per minute")
+@limiter.limit("300 per minute")
 def kiosk_mark():
     """Marks a student present via the kiosk after server-side face verification."""
     if current_user.role not in ("teacher", "admin"):
@@ -748,7 +748,7 @@ def kiosk_mark():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/register", methods=["GET", "POST"])
-@limiter.limit("20 per hour")
+@limiter.limit("50 per hour")
 def register():
     """Register a new user account with face recognition setup."""
     if request.method == "POST":
@@ -845,7 +845,7 @@ def register_face():
 
 @app.route("/save_face", methods=["POST"])
 @login_required
-@limiter.limit("30 per hour")
+@limiter.limit("100 per hour")
 def save_face():
     """
     Save a user's facial encoding (128-dimensional vector).
@@ -1205,7 +1205,7 @@ def active_sessions():
 
 @app.route("/api/session_attendance/mark", methods=["POST"])
 @login_required
-@limiter.limit("10 per minute")
+@limiter.limit("50 per minute")
 def mark_session_attendance():
     """
     Mark attendance for a live class session via API endpoint.
@@ -1888,7 +1888,7 @@ def attendance_calendar():
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.route("/forgot-password", methods=["GET", "POST"])
-@limiter.limit("5 per hour")
+@limiter.limit("15 per hour")
 def forgot_password():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
@@ -1918,7 +1918,7 @@ def forgot_password():
 
 
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
-@limiter.limit("10 per hour")
+@limiter.limit("30 per hour")
 def reset_password(token):
     if current_user.is_authenticated:
         logout_user()
@@ -1957,7 +1957,7 @@ def reset_password(token):
 
 
 @app.route("/login", methods=["GET", "POST"])
-@limiter.limit("5 per minute")
+@limiter.limit("15 per minute")
 def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()

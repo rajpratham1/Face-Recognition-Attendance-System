@@ -32,7 +32,10 @@ from firebase_service import (
     sync_enrollment,
     create_firebase_user,
     verify_firebase_user,
-    create_custom_token
+    create_custom_token,
+    update_session_status,
+    delete_firebase_user,
+    update_firebase_user
 )
 from email_service import send_attendance_email, send_password_reset_email
 from models import (
@@ -543,6 +546,8 @@ def auto_close_expired_sessions():
         if expired:
             for s in expired:
                 s.is_active = False
+                # Sync each session status to Firebase
+                update_session_status(app, s.id, False)
             db.session.commit()
     except Exception:
         db.session.rollback()
@@ -942,6 +947,10 @@ def save_face():
         current_user.face_encoding = json.dumps(normalized_descriptor)
         current_user.face_registered = True
         db.session.commit()
+        
+        # Sync to Firebase
+        sync_user_registration(app, current_user)
+        
     except Exception:
         db.session.rollback()
         app.logger.exception("Failed saving face descriptor for user_id=%s", current_user.id)
@@ -1168,6 +1177,10 @@ def close_session(session_id):
     session.is_active = False
     session.ends_at = now_utc_naive()
     db.session.commit()
+    
+    # Sync session status to Firebase
+    update_session_status(app, session_id, False)
+    
     flash("Class session closed.", "info")
     return redirect(url_for("dashboard"))
 
@@ -1452,6 +1465,10 @@ def reset_face():
     current_user.face_registered = False
     current_user.face_encoding = None
     db.session.commit()
+    
+    # Sync to Firebase
+    sync_user_registration(app, current_user)
+    
     flash("Face data cleared. Please re-register your face.", "info")
     return redirect(url_for("register_face"))
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1746,14 +1763,22 @@ def admin_delete_user(user_id):
     if user.id == current_user.id:
         flash("You cannot delete your own admin account.", "danger")
         return redirect(url_for("dashboard"))
+    
+    user_name = user.name
+    user_id = user.id
+    
     db.session.delete(user)
     try:
         db.session.commit()
+        
+        # Delete from Firebase Authentication
+        delete_firebase_user(app, user_id)
+        
     except IntegrityError:
         db.session.rollback()
         flash("User could not be deleted because related records still exist. Please contact admin to clean linked data.", "danger")
         return redirect(url_for("dashboard"))
-    flash(f"User '{user.name}' deleted.", "info")
+    flash(f"User '{user_name}' deleted.", "info")
     return redirect(url_for("dashboard"))
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1772,6 +1797,10 @@ def admin_clear_face(user_id):
     user.face_registered = False
     user.face_encoding = None
     db.session.commit()
+    
+    # Sync to Firebase
+    sync_user_registration(app, user)
+    
     flash(f"Face data cleared for '{user.name}'.", "info")
     return redirect(url_for("dashboard"))
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1954,6 +1983,10 @@ def reset_password(token):
         user.password_hash = generate_password_hash(password, method="scrypt")
         try:
             db.session.commit()
+            
+            # Update password in Firebase Authentication
+            update_firebase_user(app, user.id, password=password)
+            
         except Exception:
             db.session.rollback()
             app.logger.exception("Password reset failed for user_id=%s", user.id)

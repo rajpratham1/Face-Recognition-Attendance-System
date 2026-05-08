@@ -2213,6 +2213,39 @@ def dashboard():
         enrolled_courses=enrolled_courses,
         attendance_percentage=attendance_percentage,
     )
+# ── Student: Attendance Calendar View ─────────────────────────────────────────
+@app.route("/attendance/calendar")
+@login_required
+def attendance_calendar():
+    """Calendar view of student's attendance."""
+    if current_user.role != "student":
+        flash("Students only.", "danger")
+        return redirect(url_for("dashboard"))
+    return render_template("attendance_calendar.html")
+
+
+# ── API: Student Attendance Calendar Data ─────────────────────────────────────
+@app.route("/api/my_attendance_calendar")
+@login_required
+def api_my_attendance_calendar():
+    """Returns attendance data for calendar display."""
+    if current_user.role != "student":
+        return jsonify({"error": "Students only"}), 403
+    
+    # Get all attendance records for the student
+    attendance_records = Attendance.query.filter_by(user_id=current_user.id).all()
+    
+    calendar_data = []
+    for record in attendance_records:
+        calendar_data.append({
+            "date": record.date.isoformat(),
+            "time": record.time.strftime("%H:%M"),
+            "status": "present"
+        })
+    
+    return jsonify({"attendance": calendar_data})
+
+
 with app.app_context():
     ensure_schema_compatibility()
 

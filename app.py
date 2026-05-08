@@ -2072,9 +2072,14 @@ def logout():
 def dashboard():
     if current_user.role == "admin":
         users = User.query.all()
+        students = [user for user in users if user.role == "student"]
         today = today_local_date()
         recent_dates = [today - timedelta(days=i) for i in range(7)]
         recent_dates.reverse()
+        total_students = len(students)
+        pending_students = sum(1 for student in students if (student.assignment_status or "pending") == "pending")
+        assigned_students = sum(1 for student in students if student.assignment_status == "assigned")
+        dept_stats = {}
 
         user_attendance_map = {}
         today_count = 0
@@ -2090,12 +2095,30 @@ def dashboard():
                 else:
                     user_attendance_map[user.id][date.isoformat()] = None
 
+        for student in students:
+            department = student.department or "Unknown"
+            if department not in dept_stats:
+                dept_stats[department] = {
+                    "total": 0,
+                    "pending": 0,
+                    "assigned": 0,
+                }
+            dept_stats[department]["total"] += 1
+            if (student.assignment_status or "pending") == "assigned":
+                dept_stats[department]["assigned"] += 1
+            else:
+                dept_stats[department]["pending"] += 1
+
         return render_template(
             "admin_dashboard.html",
             users=users,
             recent_dates=recent_dates,
             user_attendance_map=user_attendance_map,
             today_count=today_count,
+            total_students=total_students,
+            pending_students=pending_students,
+            assigned_students=assigned_students,
+            dept_stats=dept_stats,
         )
 
     if current_user.role == "teacher":

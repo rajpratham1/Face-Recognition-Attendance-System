@@ -202,9 +202,32 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h6 class="card-title mb-3">➕ Create New Course</h6>
-                    <div class="border rounded-3 bg-light p-3 text-muted small">
-                        Admin course creation is unavailable in this deployment because the dashboard form no longer matches the active Flask route set.
-                    </div>
+                    <form method="POST" action="{{ url_for('admin_create_course') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-2">
+                            <input type="text" name="code" class="form-control form-control-sm" placeholder="Course Code (e.g., CS301)" required maxlength="40">
+                        </div>
+                        <div class="mb-2">
+                            <input type="text" name="title" class="form-control form-control-sm" placeholder="Course Title (e.g., Data Structures)" required maxlength="120">
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <input type="text" name="department" class="form-control form-control-sm" placeholder="Department (CSE)" required maxlength="100">
+                            </div>
+                            <div class="col-6">
+                                <input type="number" name="credits" class="form-control form-control-sm" placeholder="Credits" value="3" min="1" max="10">
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <input type="text" name="academic_year" class="form-control form-control-sm" placeholder="Year (2025-26)" required maxlength="20">
+                            </div>
+                            <div class="col-6">
+                                <input type="text" name="semester" class="form-control form-control-sm" placeholder="Semester (1-8)" required maxlength="10">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm w-100">Create Course</button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -214,10 +237,26 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
                     <h6 class="card-title mb-3">👨‍🏫 Assign Teacher to Section</h6>
-                    <p class="text-muted small">Feature temporarily disabled for maintenance.</p>
-                    <div class="border rounded-3 bg-light p-3 text-muted small">
-                        Teacher assignment tools are disabled until the corresponding admin routes are restored.
-                    </div>
+                    <form method="POST" action="{{ url_for('admin_assign_teacher') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="mb-2">
+                            <select name="teacher_id" class="form-select form-select-sm" required>
+                                <option value="">Select Teacher</option>
+                                {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}">{{ teacher.name }} ({{ teacher.department }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <select name="course_id" class="form-select form-select-sm" required id="course-select">
+                                <option value="">Select Course</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <input type="text" name="section" class="form-control form-control-sm" placeholder="Section (A, B, C)" required maxlength="10" pattern="[A-Za-z0-9]+" title="Enter section code">
+                        </div>
+                        <button type="submit" class="btn btn-warning btn-sm w-100">Assign Teacher</button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -283,7 +322,7 @@
             <p class="small text-muted mb-3">
                 <strong>Note:</strong> Students register themselves. You only need to enroll them in courses.
             </p>
-            <form method="POST" action="#" id="enroll-form">
+            <form method="POST" action="{{ url_for('admin_enroll_student') }}" id="enroll-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="row g-2">
                     <div class="col-md-4">
@@ -406,7 +445,7 @@
                                 <h6 class="modal-title">Change Section - {{ user.name }}</h6>
                                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                             </div>
-                            <form method="POST" action="#">
+                            <form method="POST" action="{{ url_for('admin_change_student_section', student_id=user.id) }}">
                                 <div class="modal-body">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <div class="mb-2">

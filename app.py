@@ -29,7 +29,10 @@ from firebase_service import (
     sync_user_registration,
     sync_course_creation,
     sync_session_creation,
-    sync_enrollment
+    sync_enrollment,
+    create_firebase_user,
+    verify_firebase_user,
+    create_custom_token
 )
 from email_service import send_attendance_email, send_password_reset_email
 from models import (
@@ -53,7 +56,7 @@ if not app.config.get("SECRET_KEY"):
 
 csrf = CSRFProtect(app)
 db.init_app(app)
-limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["200 per day", "60 per hour"])
+limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["500 per day", "150 per hour"])
 init_firebase(app)
 
 login_manager = LoginManager()
@@ -636,7 +639,7 @@ def kiosk_data(session_id):
 
 @app.route("/api/kiosk_mark", methods=["POST"])
 @login_required
-@limiter.limit("120 per minute")
+@limiter.limit("300 per minute")
 def kiosk_mark():
     """Marks a student present via the kiosk after server-side face verification."""
     if current_user.role not in ("teacher", "admin"):
@@ -732,6 +735,9 @@ def kiosk_mark():
         None, ip_address, "Kiosk-AssistedVerify/2.0"
     )
     db.session.commit()
+    
+    # Sync to Firebase
+    sync_session_attendance(app, entry, session, student)
 
     # Non-blocking email notification
     threading.Thread(
@@ -745,7 +751,7 @@ def kiosk_mark():
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.route("/register", methods=["GET", "POST"])
-@limiter.limit("20 per hour")
+@limiter.limit("50 per hour")
 def register():
     """Register a new user account with face recognition setup."""
     if request.method == "POST":
@@ -817,7 +823,14 @@ def register():
             db.session.add(new_user)
             db.session.commit()
             
-            # Sync to Firebase
+            # Create Firebase Authentication user
+            firebase_uid = create_firebase_user(app, email, password, name, new_user.id)
+            if firebase_uid:
+                app.logger.info(f"Firebase Auth user created: {email}")
+            else:
+                app.logger.warning(f"Firebase Auth user creation failed: {email}")
+            
+            # Sync user data to Firebase Realtime Database
             sync_user_registration(app, new_user)
             
             app.logger.info("New user registered: email=%s, role=%s", email, role)
@@ -842,7 +855,7 @@ def register_face():
 
 @app.route("/save_face", methods=["POST"])
 @login_required
-@limiter.limit("30 per hour")
+@limiter.limit("100 per hour")
 def save_face():
     """
     Save a user's facial encoding (128-dimensional vector).
@@ -1202,7 +1215,7 @@ def active_sessions():
 
 @app.route("/api/session_attendance/mark", methods=["POST"])
 @login_required
-@limiter.limit("10 per minute")
+@limiter.limit("50 per minute")
 def mark_session_attendance():
     """
     Mark attendance for a live class session via API endpoint.
@@ -1638,6 +1651,10 @@ def admin_edit_user(user_id):
 
         try:
             db.session.commit()
+            
+            # Sync to Firebase
+            sync_user_registration(app, user)
+            
         except IntegrityError:
             db.session.rollback()
             flash("Unable to update user due to a data conflict.", "danger")
@@ -1700,6 +1717,10 @@ def admin_change_user_role(user_id):
 
         try:
             db.session.commit()
+            
+            # Sync to Firebase
+            sync_user_registration(app, user)
+            
         except IntegrityError:
             db.session.rollback()
             flash("Role change failed due to data conflict.", "danger")
@@ -1877,7 +1898,7 @@ def attendance_calendar():
 # ──────────────────────────────────────────────────────────────────────────────
 
 @app.route("/forgot-password", methods=["GET", "POST"])
-@limiter.limit("5 per hour")
+@limiter.limit("15 per hour")
 def forgot_password():
     if current_user.is_authenticated:
         return redirect(url_for("dashboard"))
@@ -1907,7 +1928,7 @@ def forgot_password():
 
 
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
-@limiter.limit("10 per hour")
+@limiter.limit("30 per hour")
 def reset_password(token):
     if current_user.is_authenticated:
         logout_user()
@@ -1946,16 +1967,34 @@ def reset_password(token):
 
 
 @app.route("/login", methods=["GET", "POST"])
-@limiter.limit("5 per minute")
+@limiter.limit("15 per minute")
 def login():
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
         
+        # First check in SQLite database
         user = User.query.filter_by(email=email).first()
 
         if user and check_password_hash(user.password_hash, password):
+            # Verify with Firebase Authentication (optional check)
+            firebase_uid = verify_firebase_user(app, email, password)
+            if firebase_uid:
+                app.logger.info(f"✅ Firebase Auth verified: {email}")
+            else:
+                app.logger.warning(f"⚠️ Firebase Auth verification skipped or failed: {email}")
+            
+            # Login user (SQLite-based session)
             login_user(user)
+            
+            # Create custom Firebase token for client-side use (optional)
+            custom_token = create_custom_token(app, user.id)
+            if custom_token:
+                # Store token in session for future use
+                from flask import session
+                session['firebase_token'] = custom_token
+                app.logger.info(f"Custom Firebase token created for: {email}")
+            
             flash("Login successful!", "success")
             return redirect(url_for("dashboard"))
         

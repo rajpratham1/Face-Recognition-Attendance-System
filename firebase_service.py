@@ -4,12 +4,13 @@ from datetime import datetime, timezone
 
 try:
     import firebase_admin
-    from firebase_admin import credentials, db
+    from firebase_admin import credentials, db, auth
     FIREBASE_AVAILABLE = True
 except ImportError:
     firebase_admin = None
     credentials = None
     db = None
+    auth = None
     FIREBASE_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
@@ -269,3 +270,128 @@ def get_student_attendance_summary(app, student_id):
         logger.warning(f"Firebase get_student_attendance_summary failed: {exc}")
         return {}
 
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FIREBASE AUTHENTICATION FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+def create_firebase_user(app, email, password, name, user_id):
+    """Create a Firebase Authentication user"""
+    if not firebase_enabled(app):
+        logger.warning("Firebase not enabled, skipping user creation")
+        return None
+    
+    try:
+        # Create Firebase Auth user
+        firebase_user = auth.create_user(
+            uid=str(user_id),  # Use SQLite user ID as Firebase UID
+            email=email,
+            password=password,
+            display_name=name,
+            email_verified=False
+        )
+        logger.info(f"✅ Firebase Auth user created: {email} (UID: {firebase_user.uid})")
+        return firebase_user.uid
+    except auth.EmailAlreadyExistsError:
+        logger.warning(f"Firebase Auth: Email already exists: {email}")
+        return None
+    except Exception as exc:
+        logger.error(f"Firebase create_user failed: {exc}")
+        return None
+
+
+def verify_firebase_user(app, email, password):
+    """Verify user credentials using Firebase Authentication
+    Note: Firebase Admin SDK doesn't support password verification directly.
+    This function checks if user exists in Firebase Auth.
+    For actual password verification, we'll use custom tokens or REST API.
+    """
+    if not firebase_enabled(app):
+        return None
+    
+    try:
+        # Get user by email
+        firebase_user = auth.get_user_by_email(email)
+        logger.info(f"✅ Firebase user found: {email}")
+        return firebase_user.uid
+    except auth.UserNotFoundError:
+        logger.warning(f"Firebase Auth: User not found: {email}")
+        return None
+    except Exception as exc:
+        logger.error(f"Firebase verify_user failed: {exc}")
+        return None
+
+
+def create_custom_token(app, user_id):
+    """Create a custom Firebase token for a user"""
+    if not firebase_enabled(app):
+        return None
+    
+    try:
+        custom_token = auth.create_custom_token(str(user_id))
+        logger.info(f"✅ Custom token created for user: {user_id}")
+        return custom_token.decode('utf-8')
+    except Exception as exc:
+        logger.error(f"Firebase create_custom_token failed: {exc}")
+        return None
+
+
+def update_firebase_user(app, user_id, **kwargs):
+    """Update Firebase Authentication user"""
+    if not firebase_enabled(app):
+        return False
+    
+    try:
+        auth.update_user(str(user_id), **kwargs)
+        logger.info(f"✅ Firebase Auth user updated: {user_id}")
+        return True
+    except Exception as exc:
+        logger.error(f"Firebase update_user failed: {exc}")
+        return False
+
+
+def delete_firebase_user(app, user_id):
+    """Delete Firebase Authentication user"""
+    if not firebase_enabled(app):
+        return False
+    
+    try:
+        auth.delete_user(str(user_id))
+        logger.info(f"✅ Firebase Auth user deleted: {user_id}")
+        return True
+    except Exception as exc:
+        logger.error(f"Firebase delete_user failed: {exc}")
+        return False
+
+
+def get_firebase_user(app, user_id):
+    """Get Firebase Authentication user by ID"""
+    if not firebase_enabled(app):
+        return None
+    
+    try:
+        firebase_user = auth.get_user(str(user_id))
+        return {
+            'uid': firebase_user.uid,
+            'email': firebase_user.email,
+            'display_name': firebase_user.display_name,
+            'email_verified': firebase_user.email_verified,
+            'disabled': firebase_user.disabled
+        }
+    except Exception as exc:
+        logger.error(f"Firebase get_user failed: {exc}")
+        return None
+
+
+def verify_firebase_token(app, id_token):
+    """Verify Firebase ID token"""
+    if not firebase_enabled(app):
+        return None
+    
+    try:
+        decoded_token = auth.verify_id_token(id_token)
+        return decoded_token
+    except Exception as exc:
+        logger.error(f"Firebase verify_token failed: {exc}")
+        return None

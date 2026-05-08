@@ -395,3 +395,72 @@ def verify_firebase_token(app, id_token):
     except Exception as exc:
         logger.error(f"Firebase verify_token failed: {exc}")
         return None
+
+
+def get_user_from_firebase(app, email):
+    """Get user data from Firebase Realtime Database by email"""
+    if not firebase_enabled(app):
+        return None
+    
+    try:
+        # Query users by email
+        ref = db.reference('users')
+        users = ref.order_by_child('email').equal_to(email).get()
+        
+        if users:
+            # Return first matching user
+            user_id = list(users.keys())[0]
+            user_data = users[user_id]
+            user_data['id'] = int(user_id)
+            return user_data
+        return None
+    except Exception as exc:
+        logger.error(f"Firebase get_user_from_firebase failed: {exc}")
+        return None
+
+
+def sync_firebase_to_sqlite(app, user_data, db_session, User):
+    """Sync Firebase user data to SQLite (create or update)"""
+    try:
+        user = User.query.filter_by(email=user_data['email']).first()
+        
+        if not user:
+            # Create new user in SQLite
+            user = User(
+                id=user_data['id'],
+                name=user_data['name'],
+                email=user_data['email'],
+                password_hash=user_data.get('password_hash', ''),
+                role=user_data.get('role', 'student'),
+                department=user_data.get('department', ''),
+                college_id=user_data.get('college_id', ''),
+                section=user_data.get('section', ''),
+                year=user_data.get('year', ''),
+                semester=user_data.get('semester', ''),
+                face_registered=user_data.get('face_registered', False),
+                face_encoding=user_data.get('face_encoding'),
+                is_active=user_data.get('is_active', True)
+            )
+            db_session.add(user)
+        else:
+            # Update existing user
+            user.name = user_data['name']
+            user.role = user_data.get('role', user.role)
+            user.department = user_data.get('department', user.department)
+            user.college_id = user_data.get('college_id', user.college_id)
+            user.section = user_data.get('section', user.section)
+            user.year = user_data.get('year', user.year)
+            user.semester = user_data.get('semester', user.semester)
+            user.face_registered = user_data.get('face_registered', user.face_registered)
+            user.is_active = user_data.get('is_active', user.is_active)
+            if user_data.get('face_encoding'):
+                user.face_encoding = user_data['face_encoding']
+        
+        db_session.commit()
+        logger.info(f"✅ Synced Firebase user to SQLite: {user.email}")
+        return user
+    except Exception as exc:
+        db_session.rollback()
+        logger.error(f"Firebase sync_firebase_to_sqlite failed: {exc}")
+        return None
+

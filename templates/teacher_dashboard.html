@@ -15,7 +15,7 @@
             <a href="#create-live-session" class="btn btn-light btn-sm">
                 <i class="fas fa-play-circle me-1"></i> Start Session
             </a>
-            <a href="{{ url_for('teacher_timetable') }}" class="btn btn-light btn-sm">
+            <a href="#course-overview" class="btn btn-light btn-sm">
                 <i class="fas fa-calendar-alt me-1"></i> Timetable
             </a>
             <a href="#course-overview" class="btn btn-outline-light btn-sm">
@@ -52,16 +52,14 @@
                 <h5>📚 My Assigned Courses</h5>
                 <small class="text-muted">Courses assigned to you by admin</small>
             </div>
-            {% if teacher_assignments %}
+            {% if teacher_courses %}
             <div class="row g-3">
-                {% for assignment in teacher_assignments %}
-                {% set course = assignment.course %}
+                {% for course in teacher_courses %}
                 <div class="col-md-6">
                     <div class="card border-0 shadow-sm h-100">
                         <div class="card-body">
                             <h6 class="card-title mb-1">{{ course.code }} - {{ course.title }}</h6>
                             <p class="small text-muted mb-2">
-                                <span class="badge bg-primary">Section {{ assignment.section }}</span>
                                 <span class="badge bg-info text-dark">{{ course.department }}</span>
                             </p>
                             <p class="small mb-2">
@@ -81,15 +79,15 @@
             </div>
             {% else %}
             <div class="alert alert-warning mb-0">
-                <strong>No courses assigned yet.</strong><br>
-                Contact your admin to assign courses to you.
+                <strong>No courses available yet.</strong><br>
+                Contact your admin if you should already have teaching access.
             </div>
             {% endif %}
         </div>
 
         <div class="glass-card mb-4" id="create-live-session">
             <div class="section-head"><h5>🎓 Create Live Class Session</h5></div>
-            {% if teacher_assignments %}
+            {% if teacher_courses %}
             <div id="session-location-status" class="alert alert-info small mb-3">
                 📍 Classroom location will be captured when you start the live session.
             </div>
@@ -97,20 +95,18 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="hidden" name="teacher_lat" id="teacher-lat">
                 <input type="hidden" name="teacher_lng" id="teacher-lng">
-                <div class="col-md-4">
+                <div class="col-md-5">
                     <select class="form-select" name="course_id" id="session-course-select" required>
                         <option value="">Select Course</option>
-                        {% for assignment in teacher_assignments %}
-                        <option value="{{ assignment.course_id }}" data-section="{{ assignment.section }}">
-                            {{ assignment.course.code }} - {{ assignment.course.title }}
+                        {% for course in teacher_courses %}
+                        <option value="{{ course.id }}">
+                            {{ course.code }} - {{ course.title }}
                         </option>
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-3">
-                    <select class="form-select" name="section" id="session-section-select" required>
-                        <option value="">Select Section</option>
-                    </select>
+                <div class="col-md-2">
+                    <input class="form-control" type="text" name="section" maxlength="10" placeholder="Section">
                 </div>
                 <div class="col-md-3"><input class="form-control" type="text" name="room" required placeholder="Room / Lab"></div>
                 <div class="col-md-2">
@@ -128,7 +124,7 @@
             </form>
             <p class="small text-muted mb-0 mt-2">Students will only be able to mark attendance within {{ APP_SESSION_RADIUS }} meters of your captured classroom location.</p>
             {% else %}
-            <p class="text-muted mb-0">Create a course first to start sessions.</p>
+            <p class="text-muted mb-0">No courses are available for live sessions yet.</p>
             {% endif %}
         </div>
 
@@ -151,8 +147,10 @@
                                 </span>
                             </div>
                             <p class="small text-muted mb-1">
-                                <i class="fas fa-door-open me-1"></i>{{ session.room }} | 
-                                <i class="fas fa-users me-1"></i>Section {{ session.section }}
+                                <i class="fas fa-door-open me-1"></i>{{ session.room }}
+                                {% if session.section %}
+                                | <i class="fas fa-users me-1"></i>Section {{ session.section }}
+                                {% endif %}
                             </p>
                             <p class="small mb-0">
                                 <i class="fas fa-clock me-1"></i>{{ session.starts_at|localdtfmt('%d %b %I:%M %p') }} - {{ session.ends_at|localdtfmt('%I:%M %p') }}
@@ -223,7 +221,7 @@
                         {% for course in teacher_courses %}
                         <tr>
                             <td>{{ course.code }} - {{ course.title }}</td>
-                            <td>{{ course.section }}</td>
+                            <td>{{ course.section or '-' }}</td>
                             <td>{{ course_enrollment_count_map.get(course.id, 0) }}</td>
                             <td>
                                 <a href="{{ url_for('course_attendance_report', course_id=course.id) }}" class="btn btn-sm btn-outline-primary me-1">📊 Report</a>

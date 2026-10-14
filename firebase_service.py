@@ -128,14 +128,14 @@ def sync_course_creation(app, course):
             'id': course.id,
             'code': course.code,
             'title': course.title,
+            'section': course.section or '',
+            'teacher_id': course.teacher_id,
+            'is_active': course.is_active,
             'department': getattr(course, 'department', '') or '',
             'academic_year': getattr(course, 'academic_year', '') or '',
             'semester': getattr(course, 'semester', '') or '',
             'credits': getattr(course, 'credits', 3),
-            'section': course.section or '',
-            'teacher_id': course.teacher_id,
             'created_by_admin_id': getattr(course, 'created_by_admin_id', None),
-            'is_active': course.is_active,
             'updated_at': course.updated_at.isoformat() if getattr(course, 'updated_at', None) else None,
             'created_at': course.created_at.isoformat() if course.created_at else None,
             'synced_at': datetime.now(timezone.utc).isoformat()
@@ -426,8 +426,6 @@ def verify_firebase_token(app, id_token):
     except Exception as exc:
         logger.error(f"Firebase verify_token failed: {exc}")
         return None
-
-
 def get_user_from_firebase(app, email):
     """Get user data from Firebase Realtime Database by email"""
     if not firebase_enabled(app):
@@ -657,4 +655,3 @@ def sync_reference_data_to_sqlite(app, db_session, User, Course, TeacherAssignme
     except Exception as exc:
         db_session.rollback()
         logger.error(f"Firebase sync_reference_data_to_sqlite failed: {exc}")
-

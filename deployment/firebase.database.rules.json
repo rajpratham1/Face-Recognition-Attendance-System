@@ -1,7 +1,14 @@
 {
   "rules": {
-    ".read": false,
-    ".write": false,
+    ".read": "auth != null",
+    ".write": "auth != null",
+
+    "users": {
+      "$userId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
 
     "roles": {
       "$uid": {
@@ -13,32 +20,50 @@
     "courses": {
       "$courseId": {
         ".read": "auth != null",
-        ".write": "auth != null && (root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')"
+        ".write": "auth != null"
       }
     },
 
     "sessions": {
       "$sessionId": {
         ".read": "auth != null",
-        ".write": "auth != null && (root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')"
+        ".write": "auth != null"
+      }
+    },
+
+    "enrollments": {
+      "$studentId": {
+        "$courseId": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
       }
     },
 
     "attendance": {
-      "$studentId": {
-        ".read": "auth != null && (auth.uid === $studentId || root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')",
+      "students": {
+        "$studentId": {
+          "$sessionId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
+        }
+      },
+      "sessions": {
         "$sessionId": {
-          ".write": "auth != null && (auth.uid === $studentId || root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')",
-          ".validate": "newData.hasChildren(['studentId','courseCode','sessionId','markedAt','faceDistance'])"
+          "$studentId": {
+            ".read": "auth != null",
+            ".write": "auth != null"
+          }
         }
       }
     },
 
     "attendance_attempts": {
       "$date": {
-        ".read": "auth != null && (root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')",
+        ".read": "auth != null",
         "$attemptId": {
-          ".write": "auth != null && (root.child('roles').child(auth.uid).val() === 'teacher' || root.child('roles').child(auth.uid).val() === 'admin')"
+          ".write": "auth != null"
         }
       }
     }

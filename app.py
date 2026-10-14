@@ -2403,7 +2403,6 @@ def login():
         password = request.form.get("password", "")
         
         # Try to get user from Firebase first (primary source)
-        from firebase_service import get_user_from_firebase, sync_firebase_to_sqlite
         firebase_user = get_user_from_firebase(app, email)
         
         if firebase_user:
@@ -2434,7 +2433,23 @@ def login():
         # Fallback: Check SQLite if Firebase fails or user not in Firebase
         user = User.query.filter_by(email=email).first()
         if user and check_password_hash(user.password_hash, password):
-            login_user(user, remember=True)
+            # Verify with Firebase Authentication (optional check)
+            firebase_uid = verify_firebase_user(app, email, password)
+            if firebase_uid:
+                app.logger.info(f"✅ Firebase Auth verified: {email}")
+            else:
+                app.logger.warning(f"⚠️ Firebase Auth verification skipped or failed: {email}")
+            
+            # Login user (SQLite-based session)
+            login_user(user)
+            
+            # Create custom Firebase token for client-side use (optional)
+            custom_token = create_custom_token(app, user.id)
+            if custom_token:
+                # Store token in session for future use
+                from flask import session
+                session['firebase_token'] = custom_token
+                app.logger.info(f"Custom Firebase token created for: {email}")
             
             # Update last login timestamp
             user.last_login = now_utc_naive()

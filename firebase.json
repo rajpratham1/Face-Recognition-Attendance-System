@@ -1,0 +1,5 @@
+{
+  "database": {
+    "rules": "deployment/firebase.database.rules.json"
+  }
+}

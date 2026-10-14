@@ -107,6 +107,7 @@
   const statusText = document.getElementById('status-text');
   const dupAlert = document.getElementById('dup-alert');
   const csrfToken = window.getCsrfToken();
+  const livenessConfig = {{ liveness_config|tojson }};
 
   const MODEL_URLS = [
     'https://justadudewhohacks.github.io/face-api.js/models',
@@ -173,11 +174,38 @@
     captureBtn.disabled = true;
     dupAlert.style.display = 'none';
     
+    if (!livenessConfig.enabled) {
+      setStatus('Liveness check disabled. Capturing face...', 'text-info');
+      try {
+        const detection = await faceapi.detectSingleFace(video)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+
+        if (!detection) {
+          setStatus('No face detected. Position your face in frame.', 'text-warning');
+          scanning = false;
+          updateCaptureState();
+          return;
+        }
+
+        await captureFaceWithSamples(Array.from(detection.descriptor));
+      } catch (error) {
+        console.error('Direct face capture error:', error);
+        setStatus('Face capture failed. Please try again.', 'text-danger');
+        scanning = false;
+        updateCaptureState();
+      }
+      return;
+    }
+    
     // Initialize liveness detector
     livenessDetector = new LivenessDetector({
-      requireBlink: true,
-      requireHeadMovement: true,
-      timeoutSeconds: 15,
+      requireBlink: livenessConfig.requireBlink,
+      requireHeadMovement: livenessConfig.requireHeadMovement,
+      timeoutSeconds: Math.max(20, Number(livenessConfig.timeoutSeconds || 15)),
+      blinkThreshold: Number(livenessConfig.blinkThreshold || 0.25),
+      movementThreshold: Number(livenessConfig.movementThreshold || 15),
+      qualityThreshold: Number(livenessConfig.qualityThreshold || 0.6),
       onProgress: (data) => {
         setStatus(data.message, 'text-info');
       },

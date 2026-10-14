@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="dashboard-shell reveal-up">
+    <div class="dashboard-hero mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+            <div>
+                <span class="hero-kicker">Attendance History</span>
+                <h2 class="mb-1">Failed Attendance Attempts</h2>
+                <p class="mb-0" style="opacity:.9;">Understand why your attendance marking failed</p>
+            </div>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-outline-light btn-sm">← Back to Dashboard</a>
+        </div>
+    </div>
+
+    {% if total_failed == 0 %}
+    <div class="glass-card text-center py-5">
+        <div class="mb-3" style="font-size: 4rem;">✅</div>
+        <h4>No Failed Attempts!</h4>
+        <p class="text-muted mb-0">You haven't had any failed attendance attempts. Keep it up!</p>
+    </div>
+    {% else %}
+    <div class="alert alert-info mb-4">
+        <strong>📊 Total Failed Attempts:</strong> {{ total_failed }}
+        <p class="mb-0 small mt-2">Review the reasons below to avoid future failures. Common issues: wrong location, face not recognized, or session expired.</p>
+    </div>
+
+    {% for session_id, data in attempts_by_session.items() %}
+    <div class="glass-card mb-4">
+        <div class="section-head">
+            {% if data.session %}
+            <h5>{{ data.session.course_code }} - {{ data.session.title }}</h5>
+            <small class="text-muted">
+                Room: {{ data.session.room }} | 
+                {{ data.session.starts_at|localdtfmt('%d %b %Y %I:%M %p') }}
+            </small>
+            {% else %}
+            <h5>Session Not Found</h5>
+            <small class="text-muted">Session may have been deleted</small>
+            {% endif %}
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover table-modern align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Time</th>
+                        <th>Reason</th>
+                        <th>Face Distance</th>
+                        <th>Location</th>
+                        <th>Device</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for attempt in data.attempts %}
+                    <tr>
+                        <td class="small">{{ attempt.created_at|localdtfmt('%I:%M %p') }}</td>
+                        <td>
+                            <span class="badge 
+                                {% if 'spoofing' in attempt.reason.lower() %}bg-danger
+                                {% elif 'face' in attempt.reason.lower() %}bg-warning text-dark
+                                {% elif 'location' in attempt.reason.lower() or 'radius' in attempt.reason.lower() %}bg-info text-dark
+                                {% elif 'session' in attempt.reason.lower() %}bg-secondary
+                                {% else %}bg-dark
+                                {% endif %}">
+                                {{ attempt.reason }}
+                            </span>
+                        </td>
+                        <td class="small">
+                            {% if attempt.face_distance %}
+                            {{ "%.3f"|format(attempt.face_distance) }}
+                            {% if attempt.face_distance > 0.80 %}
+                            <span class="text-danger" title="Very high distance - possible spoofing">⚠️</span>
+                            {% elif attempt.face_distance > 0.45 %}
+                            <span class="text-warning" title="High distance - face not matched">⚠️</span>
+                            {% endif %}
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                        <td class="small">
+                            {% if attempt.latitude and attempt.longitude %}
+                            <a href="https://www.google.com/maps?q={{ attempt.latitude }},{{ attempt.longitude }}" 
+                               target="_blank" class="text-decoration-none" title="View on map">
+                                📍 {{ "%.4f"|format(attempt.latitude) }}, {{ "%.4f"|format(attempt.longitude) }}
+                            </a>
+                            {% else %}
+                            <span class="text-muted">Not captured</span>
+                            {% endif %}
+                        </td>
+                        <td class="small text-muted">
+                            {% if attempt.device_hash %}
+                            {{ attempt.device_hash[:8] }}...
+                            {% else %}
+                            -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+
+    {# Help Section #}
+    <div class="glass-card">
+        <div class="section-head">
+            <h5>💡 How to Fix Common Issues</h5>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="card border-0 bg-light h-100">
+                    <div class="card-body">
+                        <h6 class="card-title">❌ Face Verification Failed</h6>
+                        <ul class="small mb-0">
+                            <li>Ensure good lighting</li>
+                            <li>Look directly at camera</li>
+                            <li>Remove glasses/mask if possible</li>
+                            <li>Keep face within frame</li>
+                            <li>Don't use photos or videos</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-0 bg-light h-100">
+                    <div class="card-body">
+                        <h6 class="card-title">📍 Outside Classroom Radius</h6>
+                        <ul class="small mb-0">
+                            <li>Go to the actual classroom</li>
+                            <li>Enable location services</li>
+                            <li>Wait for GPS to stabilize</li>
+                            <li>Check if you're in correct room</li>
+                            <li>Contact teacher if location is wrong</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-0 bg-light h-100">
+                    <div class="card-body">
+                        <h6 class="card-title">⚠️ Possible Spoofing Attempt</h6>
+                        <ul class="small mb-0">
+                            <li>Don't use photos of yourself</li>
+                            <li>Don't use videos or screens</li>
+                            <li>Use live camera only</li>
+                            <li>Blink naturally during scan</li>
+                            <li>Move head slightly if prompted</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card border-0 bg-light h-100">
+                    <div class="card-body">
+                        <h6 class="card-title">⏰ Session Inactive</h6>
+                        <ul class="small mb-0">
+                            <li>Mark attendance during class time</li>
+                            <li>Check session end time</li>
+                            <li>Don't wait until last minute</li>
+                            <li>Contact teacher if session closed early</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

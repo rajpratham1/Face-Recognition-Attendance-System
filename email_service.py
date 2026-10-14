@@ -157,3 +157,205 @@ def send_password_reset_email(app, user_name, user_email, reset_url, expires_in_
         "-- Attendance System"
     )
     return _send_email(app, user_email, subject, text_body, html_body)
+
+
+def send_low_attendance_alert(app, student, low_courses):
+    """
+    Send email alert to student about low attendance in courses.
+    
+    Args:
+        app: Flask application instance
+        student: User object (student)
+        low_courses: List of dicts with course info and attendance data
+    """
+    if not student.email:
+        logger.warning(f"No email for student {student.id}, skipping low attendance alert")
+        return False
+    
+    subject = "⚠️ Low Attendance Alert - Action Required"
+    
+    # Build course list HTML
+    course_rows = ""
+    for course_data in low_courses:
+        course = course_data['course']
+        percentage = course_data['percentage']
+        attended = course_data['attended']
+        total = course_data['total']
+        required = max(0, int((75 * total / 100) - attended))
+        
+        status_color = "#dc3545" if percentage < 50 else "#ffc107"
+        
+        course_rows += f"""
+        <tr style="background-color: #fff3cd;">
+          <td style="padding: 10px 14px; color: #333; border-bottom: 1px solid #e0e0e0;">{course.code}</td>
+          <td style="padding: 10px 14px; color: #333; border-bottom: 1px solid #e0e0e0;">{course.title}</td>
+          <td style="padding: 10px 14px; color: {status_color}; font-weight: bold; border-bottom: 1px solid #e0e0e0;">{percentage}%</td>
+          <td style="padding: 10px 14px; color: #555; border-bottom: 1px solid #e0e0e0;">{attended}/{total}</td>
+          <td style="padding: 10px 14px; color: #dc3545; font-weight: bold; border-bottom: 1px solid #e0e0e0;">{required}</td>
+        </tr>
+        """
+    
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background-color: #f4f6f9; padding: 30px;">
+      <div style="max-width: 600px; margin: auto; background: white; border-radius: 10px;
+                  box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #dc3545, #c82333); padding: 24px; text-align: center;">
+          <h2 style="color: white; margin: 0;">⚠️ Low Attendance Alert</h2>
+        </div>
+        <div style="padding: 28px;">
+          <p style="font-size: 16px; color: #333;">Hello <strong>{student.name}</strong>,</p>
+          <p style="color: #555;">
+            Your attendance has fallen below the required 75% threshold in the following course(s).
+            This may affect your eligibility to appear in exams.
+          </p>
+          
+          <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 20px 0;">
+            <strong style="color: #856404;">⚠️ Action Required:</strong>
+            <p style="color: #856404; margin: 8px 0 0 0;">
+              Attend all upcoming classes to improve your attendance percentage.
+            </p>
+          </div>
+          
+          <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
+            <thead>
+              <tr style="background-color: #f0f4ff;">
+                <th style="padding: 10px 14px; text-align: left; color: #333; border-bottom: 2px solid #0d47a1;">Code</th>
+                <th style="padding: 10px 14px; text-align: left; color: #333; border-bottom: 2px solid #0d47a1;">Course</th>
+                <th style="padding: 10px 14px; text-align: left; color: #333; border-bottom: 2px solid #0d47a1;">%</th>
+                <th style="padding: 10px 14px; text-align: left; color: #333; border-bottom: 2px solid #0d47a1;">Attended</th>
+                <th style="padding: 10px 14px; text-align: left; color: #333; border-bottom: 2px solid #0d47a1;">Need</th>
+              </tr>
+            </thead>
+            <tbody>
+              {course_rows}
+            </tbody>
+          </table>
+          
+          <p style="margin-top: 24px; color: #555;">
+            <strong>What you should do:</strong>
+          </p>
+          <ul style="color: #555;">
+            <li>Attend all upcoming classes without fail</li>
+            <li>Contact your course teacher if you have valid reasons for absences</li>
+            <li>Check your attendance regularly on the portal</li>
+            <li>Aim for 100% attendance in remaining sessions</li>
+          </ul>
+          
+          <p style="margin-top: 24px; color: #777; font-size: 13px;">
+            If you have any concerns or need assistance, please contact your academic advisor or course coordinator.
+          </p>
+        </div>
+        <div style="background: #f9f9f9; padding: 14px; text-align: center; border-top: 1px solid #eee;">
+          <p style="color: #aaa; font-size: 12px; margin: 0;">
+            This is an automated daily alert from the Attendance System.
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+    
+    # Build text version
+    text_body = f"Hello {student.name},\n\n"
+    text_body += "Your attendance has fallen below 75% in the following courses:\n\n"
+    
+    for course_data in low_courses:
+        course = course_data['course']
+        percentage = course_data['percentage']
+        attended = course_data['attended']
+        total = course_data['total']
+        required = max(0, int((75 * total / 100) - attended))
+        
+        text_body += f"- {course.code} ({course.title}): {percentage}% ({attended}/{total} sessions)\n"
+        text_body += f"  You need to attend {required} more sessions to reach 75%\n\n"
+    
+    text_body += "\nAction Required:\n"
+    text_body += "- Attend all upcoming classes\n"
+    text_body += "- Contact your teacher if you have valid reasons\n"
+    text_body += "- Check your attendance regularly\n\n"
+    text_body += "-- Attendance System"
+    
+    return _send_email(app, student.email, subject, text_body, html_body)
+
+
+def send_session_start_notification(app, student, session):
+    """
+    Send email notification when a teacher starts a live session.
+    
+    Args:
+        app: Flask application instance
+        student: User object (student)
+        session: ClassSession object
+    """
+    if not student.email:
+        return False
+    
+    settings = _mail_settings(app)
+    
+    # Convert session time to local timezone
+    if session.ends_at.tzinfo is None:
+        ends_at = session.ends_at.replace(tzinfo=timezone.utc)
+    else:
+        ends_at = session.ends_at
+    
+    local_end_time = ends_at.astimezone(ZoneInfo(settings["app_tz"]))
+    formatted_end_time = local_end_time.strftime("%I:%M %p")
+    
+    subject = f"🔴 Live Session Started - {session.course_code}"
+    
+    html_body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background-color: #f4f6f9; padding: 30px;">
+      <div style="max-width: 500px; margin: auto; background: white; border-radius: 10px;
+                  box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #28a745, #218838); padding: 24px; text-align: center;">
+          <h2 style="color: white; margin: 0;">🔴 Live Session Started</h2>
+        </div>
+        <div style="padding: 28px;">
+          <p style="font-size: 16px; color: #333;">Hello <strong>{student.name}</strong>,</p>
+          <p style="color: #555;">
+            Your teacher has started a live class session. Mark your attendance now!
+          </p>
+          
+          <div style="background: #d4edda; border-left: 4px solid #28a745; padding: 12px; margin: 20px 0;">
+            <strong style="color: #155724;">Session Details:</strong>
+            <p style="color: #155724; margin: 8px 0 0 0;">
+              <strong>{session.course_code}</strong> - {session.title}<br>
+              Room: {session.room}<br>
+              Ends at: {formatted_end_time}
+            </p>
+          </div>
+          
+          <p style="margin: 24px 0; text-align: center;">
+            <a href="#" style="display: inline-block; padding: 12px 22px; border-radius: 8px;
+               background: #28a745; color: white; text-decoration: none; font-weight: 600;">
+              Mark Attendance Now
+            </a>
+          </p>
+          
+          <p style="color: #777; font-size: 13px;">
+            ⚠️ Remember: You must be in the classroom to mark attendance.
+          </p>
+        </div>
+        <div style="background: #f9f9f9; padding: 14px; text-align: center; border-top: 1px solid #eee;">
+          <p style="color: #aaa; font-size: 12px; margin: 0;">
+            This is an automated notification from the Attendance System.
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+    
+    text_body = (
+        f"Hello {student.name},\n\n"
+        f"A live class session has started:\n\n"
+        f"Course: {session.course_code} - {session.title}\n"
+        f"Room: {session.room}\n"
+        f"Ends at: {formatted_end_time}\n\n"
+        f"Mark your attendance now! Remember to be in the classroom.\n\n"
+        f"-- Attendance System"
+    )
+    
+    return _send_email(app, student.email, subject, text_body, html_body)

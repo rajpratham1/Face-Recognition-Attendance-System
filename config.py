@@ -69,12 +69,19 @@ class Config:
     DEBUG = FLASK_ENV == 'development'
     ENFORCE_SECRET_KEY_IN_PRODUCTION = _env_bool('ENFORCE_SECRET_KEY_IN_PRODUCTION', True)
 
+    # Session configuration
+    PERMANENT_SESSION_LIFETIME = 86400  # 24 hours in seconds
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     SESSION_COOKIE_SECURE = _env_bool('SESSION_COOKIE_SECURE', FLASK_ENV == 'production')
+    SESSION_COOKIE_NAME = 'attendance_session'
+    
+    # Remember me cookie configuration
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SAMESITE = 'Lax'
     REMEMBER_COOKIE_SECURE = _env_bool('SESSION_COOKIE_SECURE', FLASK_ENV == 'production')
+    REMEMBER_COOKIE_DURATION = 2592000  # 30 days in seconds
+    
     WTF_CSRF_TIME_LIMIT = None
     RATELIMIT_STORAGE_URI = os.environ.get('RATELIMIT_STORAGE_URI', 'memory://')
     RATELIMIT_HEADERS_ENABLED = True

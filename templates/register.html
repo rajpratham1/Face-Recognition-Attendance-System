@@ -29,17 +29,13 @@
                 <div id="student-extra-fields">
                     <div class="mb-3">
                         <label class="form-label">College ID</label>
-                        <input type="text" name="college_id" class="form-control" placeholder="E.g., BCS2021001">
-                    </div>
-                    
-                    <div class="mb-3">
-                        <label class="form-label">Section</label>
-                        <input type="text" name="section" class="form-control" placeholder="E.g., A">
+                        <input type="text" name="college_id" class="form-control" placeholder="E.g., BCS2021001" required>
+                        <div class="form-text">Your unique college identification number</div>
                     </div>
                     
                     <div class="mb-3">
                         <label class="form-label">Year</label>
-                        <select name="year" class="form-select">
+                        <select name="year" class="form-select" required>
                             <option value="">Select Year</option>
                             <option value="1">1st Year</option>
                             <option value="2">2nd Year</option>
@@ -51,7 +47,7 @@
                     
                     <div class="mb-3">
                         <label class="form-label">Semester</label>
-                        <select name="semester" class="form-select">
+                        <select name="semester" class="form-select" required>
                             <option value="">Select Semester</option>
                             <option value="1">1st Sem</option>
                             <option value="2">2nd Sem</option>
@@ -65,11 +61,21 @@
                             <option value="10">10th Sem</option>
                         </select>
                     </div>
+                    
+                    <div class="alert alert-info small mb-3">
+                        <strong>📌 Note:</strong> Your section will be assigned by the admin after registration.
+                    </div>
                 </div>
 
                 <div class="mb-3">
                     <label class="form-label">Email</label>
                     <input type="email" name="email" class="form-control" required placeholder="name@domain.com">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">Phone Number</label>
+                    <input type="tel" name="phone" class="form-control" required placeholder="9876543210" pattern="[0-9]{10}" maxlength="10">
+                    <div class="form-text">10-digit mobile number for notifications</div>
                 </div>
 
                 <div class="mb-3">

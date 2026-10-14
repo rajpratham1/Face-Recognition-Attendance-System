@@ -15,10 +15,34 @@
         <div class="d-flex flex-wrap gap-2 mt-3">
             <a href="{{ url_for('dashboard') }}" class="btn btn-light btn-sm">Back to Dashboard</a>
             <a href="{{ url_for('teacher_session_roster', session_id=session.id) }}" class="btn btn-outline-light btn-sm">Refresh Now</a>
+            
+            {# Lock/Unlock Attendance Button #}
+            {% set is_locked = roster.marked_entries and roster.marked_entries[0].attendance.is_locked %}
+            {% if is_locked %}
+            <form method="POST" action="{{ url_for('teacher_unlock_attendance', session_id=session.id) }}" style="display: inline;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-warning btn-sm" title="Unlock to allow changes">
+                    🔒 Unlock Attendance
+                </button>
+            </form>
+            {% else %}
+            <form method="POST" action="{{ url_for('teacher_lock_attendance', session_id=session.id) }}" style="display: inline;"
+                  onsubmit="return confirm('Lock attendance? This will prevent students from marking attendance for this session.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" class="btn btn-success btn-sm" title="Lock to prevent changes">
+                    🔓 Lock Attendance
+                </button>
+            </form>
+            {% endif %}
+            
             {% if is_live %}
             <span class="badge bg-success align-self-center">Auto-refresh every 20 seconds</span>
             {% else %}
             <span class="badge bg-secondary align-self-center">Session closed</span>
+            {% endif %}
+            
+            {% if is_locked %}
+            <span class="badge bg-warning text-dark align-self-center">🔒 Locked</span>
             {% endif %}
         </div>
     </div>
@@ -60,6 +84,7 @@
                             <th>Name</th>
                             <th>College ID</th>
                             <th>Marked At</th>
+                            <th>Status</th>
                             <th>Face Distance</th>
                         </tr>
                     </thead>
@@ -70,12 +95,22 @@
                             <td class="fw-semibold">{{ row.student.name }}</td>
                             <td>{{ row.student.college_id or '—' }}</td>
                             <td>{{ row.attendance.marked_at|localdtfmt('%d %b %Y %I:%M %p') }}</td>
+                            <td>
+                                {% if row.attendance.is_late %}
+                                <span class="badge bg-warning text-dark" title="Marked more than 10 minutes after class start">⏰ Late</span>
+                                {% else %}
+                                <span class="badge bg-success">✓ On Time</span>
+                                {% endif %}
+                                {% if row.attendance.is_locked %}
+                                <span class="badge bg-secondary" title="Attendance locked">🔒</span>
+                                {% endif %}
+                            </td>
                             <td>{{ '%.4f'|format(row.attendance.face_distance) if row.attendance.face_distance is not none else '—' }}</td>
                         </tr>
                         {% endfor %}
                         {% else %}
                         <tr>
-                            <td colspan="4" class="text-center text-muted py-3">No student has marked attendance for this session yet.</td>
+                            <td colspan="5" class="text-center text-muted py-3">No student has marked attendance for this session yet.</td>
                         </tr>
                         {% endif %}
                     </tbody>
